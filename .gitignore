@@ -1,0 +1,104 @@
+# ==============================================================================
+# SRI LANKA LEGAL INTELLIGENCE PLATFORM (SLLIP) - GITIGNORE
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Large Datasets, Raw Files & Generated Pipeline Data
+# ------------------------------------------------------------------------------
+sllip_raw_dataset/
+sllip_raw_dataset/*
+
+processed_data/
+processed_data/*
+# Keep directory structure if needed:
+!processed_data/.gitkeep
+
+# ------------------------------------------------------------------------------
+# 2. Vector Databases & Embeddings (ChromaDB)
+# ------------------------------------------------------------------------------
+vector_db/
+vector_db/*
+*.sqlite3
+*.parquet
+
+# ------------------------------------------------------------------------------
+# 3. Python Caches & Bytecode
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ------------------------------------------------------------------------------
+# 4. Virtual Environments
+# ------------------------------------------------------------------------------
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ------------------------------------------------------------------------------
+# 5. Environment Variables & Secrets
+# ------------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+secrets.toml
+.streamlit/secrets.toml
+
+# ------------------------------------------------------------------------------
+# 6. IDE & Code Editor Files
+# ------------------------------------------------------------------------------
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+
+# ------------------------------------------------------------------------------
+# 7. OS & System Caches
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ------------------------------------------------------------------------------
+# 8. Testing, Coverage & Logs
+# ------------------------------------------------------------------------------
+.pytest_cache/
+.coverage
+htmlcov/
+.nox/
+.hypothesis/
+*.log
+logs/
