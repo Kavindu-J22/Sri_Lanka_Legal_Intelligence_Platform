@@ -336,14 +336,14 @@ class InvestigatorAgent:
             "Synthesize the user's case facts alongside retrieved historical precedents and statutory provisions into a structured, objective Legal Fact Sheet. "
             "STRICT FORMATTING RULE: Present the answer strictly using clear paragraphs and bullet points. "
             "STRICT WORD COUNT CONSTRAINT: MAXIMUM WORD COUNT IS 500 WORDS. Do NOT exceed 500 words under any circumstances. "
-            "IMPORTANT: Output ONLY the official legal document starting with '=== LEGAL FACT SHEET & PRECEDENT CONTEXT ==='. Do NOT include meta-commentary, internal thoughts, or phrases like 'The user wants me to...'."
+            "IMPORTANT: Output ONLY the official legal document starting with '=== LEGAL FACT SHEET & PRECEDENT CONTEXT ===' and end with '___ END OF LEGAL FACT SHEET ___'. Do NOT include meta-commentary, internal thoughts, or phrases like 'The user wants me to...'."
         )
         user_prompt = (
             f"=== LEGAL FACT SHEET & PRECEDENT CONTEXT ===\n"
             f"CASE FACTS:\n{case_facts}\n\n"
             f"RETRIEVED PRECEDENTS:\n{json.dumps(precedents, indent=2)}\n\n"
             f"RETRIEVED STATUTES:\n{json.dumps(statutes, indent=2)}\n\n"
-            f"Generate a structured Legal Fact Sheet (STRICT MAXIMUM 500 WORDS, Paragraphs & Bullet Points)."
+            f"Generate a structured Legal Fact Sheet (STRICT MAXIMUM 500 WORDS, Paragraphs & Bullet Points). Conclude with ___ END OF LEGAL FACT SHEET ___."
         )
         
         llm_fact_sheet, model_used = self.llm_client.generate(user_prompt, sys_prompt, max_tokens=4000, status_callback=status_callback)
@@ -364,6 +364,10 @@ class InvestigatorAgent:
             llm_fact_sheet += f"\nRetrieved Statutory Provisions ({len(statutes)} Sections Found):\n"
             for i, stat in enumerate(statutes, 1):
                 llm_fact_sheet += f"  • [{i}] Source: {stat['filename']} | Sim: {stat['similarity_score']}\n"
+
+        llm_fact_sheet = llm_fact_sheet.strip()
+        if not llm_fact_sheet.endswith("___ END OF LEGAL FACT SHEET ___") and not llm_fact_sheet.endswith("___ END ___"):
+            llm_fact_sheet += "\n\n___ END OF LEGAL FACT SHEET ___"
 
         return {
             "fact_sheet_text": llm_fact_sheet,
@@ -390,14 +394,14 @@ class DefenseAgent:
             "Construct a highly persuasive legal submission advocating for setting aside the lower court order or allowing the appeal, citing statutory grounds and precedents. "
             "STRICT FORMATTING RULE: Present the answer strictly using clear paragraphs and bullet points. "
             "STRICT WORD COUNT CONSTRAINT: MAXIMUM WORD COUNT IS 300 WORDS. Do NOT exceed 300 words under any circumstances. "
-            "IMPORTANT: Output ONLY the official legal brief starting with '=== DEFENSE COUNSEL LEGAL SUBMISSION (APPELLANT) ==='. Do NOT include meta-commentary, internal thoughts, or phrases like 'The user wants me to...'."
+            "IMPORTANT: Output ONLY the official legal brief starting with '=== DEFENSE COUNSEL LEGAL SUBMISSION (APPELLANT) ===' and end with '___ END OF APPELLANT DEFENSE SUBMISSION ___'. Do NOT include meta-commentary or internal thoughts."
         )
         user_prompt = (
             f"=== DEFENSE COUNSEL LEGAL SUBMISSION (APPELLANT) ===\n"
             f"CASE FACTS:\n{case_facts}\n\n"
             f"SUPPORTING PRECEDENTS:\n{json.dumps(precedents, indent=2)}\n\n"
             f"STATUTORY PROVISIONS:\n{json.dumps(statutes, indent=2)}\n\n"
-            f"Draft an Appellant Legal Submission with Statement of Claim, Statutory Grounds, Precedent Analysis, and Prayer for Relief (STRICT MAXIMUM 300 WORDS, Paragraphs & Bullet Points)."
+            f"Draft an Appellant Legal Submission with Statement of Claim, Statutory Grounds, Precedent Analysis, and Prayer for Relief (STRICT MAXIMUM 300 WORDS, Paragraphs & Bullet Points). Conclude with ___ END OF APPELLANT DEFENSE SUBMISSION ___."
         )
 
         llm_arg, _ = self.llm_client.generate(user_prompt, sys_prompt, max_tokens=4000, status_callback=status_callback)
@@ -417,6 +421,10 @@ class DefenseAgent:
                 llm_arg += f"3. PRECEDENT SUBMISSION: The totality of circumstances in this appeal demonstrates substantial prejudice to the Appellant's rights.\n"
             llm_arg += f"4. PRAYER FOR RELIEF: Wherefore, the Appellant respectfully prays that this Court allow the appeal and set aside the decree below."
 
+        llm_arg = llm_arg.strip()
+        if not llm_arg.endswith("___ END OF APPELLANT DEFENSE SUBMISSION ___") and not llm_arg.endswith("___ END ___"):
+            llm_arg += "\n\n___ END OF APPELLANT DEFENSE SUBMISSION ___"
+
         return llm_arg
 
 
@@ -435,14 +443,14 @@ class ProsecutorAgent:
             "Construct a powerful rebuttal brief dismantling the Appellant's arguments, asserting that the lower court decree is sound in law and supported by evidence. "
             "STRICT FORMATTING RULE: Present the answer strictly using clear paragraphs and bullet points. "
             "STRICT WORD COUNT CONSTRAINT: MAXIMUM WORD COUNT IS 300 WORDS. Do NOT exceed 300 words under any circumstances. "
-            "IMPORTANT: Output ONLY the official legal brief starting with '=== PROSECUTOR / RESPONDENT LEGAL SUBMISSION ==='. Do NOT include meta-commentary, internal thoughts, or phrases like 'The user wants me to...'."
+            "IMPORTANT: Output ONLY the official legal brief starting with '=== PROSECUTOR / RESPONDENT LEGAL SUBMISSION ===' and end with '___ END OF RESPONDENT PROSECUTOR SUBMISSION ___'. Do NOT include meta-commentary or internal thoughts."
         )
         user_prompt = (
             f"=== PROSECUTOR / RESPONDENT LEGAL SUBMISSION ===\n"
             f"CASE FACTS:\n{case_facts}\n\n"
             f"APPELLANT BRIEF:\n{defense_argument}\n\n"
             f"RETRIEVED PRECEDENTS:\n{json.dumps(precedents, indent=2)}\n\n"
-            f"Draft a Respondent Rebuttal Brief asserting why the lower court decree should be affirmed and the appeal dismissed (STRICT MAXIMUM 300 WORDS, Paragraphs & Bullet Points)."
+            f"Draft a Respondent Rebuttal Brief asserting why the lower court decree should be affirmed and the appeal dismissed (STRICT MAXIMUM 300 WORDS, Paragraphs & Bullet Points). Conclude with ___ END OF RESPONDENT PROSECUTOR SUBMISSION ___."
         )
 
         llm_rebuttal, _ = self.llm_client.generate(user_prompt, sys_prompt, max_tokens=4000, status_callback=status_callback)
@@ -461,6 +469,10 @@ class ProsecutorAgent:
             else:
                 llm_rebuttal += f"3. LEGAL BAR: The Appellant's contention constitutes a mere re-appreciation of oral testimony, which is impermissible on appeal.\n"
             llm_rebuttal += f"4. PRAYER: The Respondent prays that the appeal be dismissed with costs."
+
+        llm_rebuttal = llm_rebuttal.strip()
+        if not llm_rebuttal.endswith("___ END OF RESPONDENT PROSECUTOR SUBMISSION ___") and not llm_rebuttal.endswith("___ END ___"):
+            llm_rebuttal += "\n\n___ END OF RESPONDENT PROSECUTOR SUBMISSION ___"
 
         return llm_rebuttal
 
@@ -512,7 +524,7 @@ class JudgeAgent:
             "Evaluate the facts, appellant brief, and respondent rebuttal. Provide a formal Judicial Decree & Ratio Decidendi. "
             "STRICT FORMATTING RULE: Present the answer strictly using clear paragraphs and bullet points. "
             "STRICT WORD COUNT CONSTRAINT: MAXIMUM WORD COUNT IS 500 WORDS. Do NOT exceed 500 words under any circumstances. "
-            "IMPORTANT: Output ONLY the official Judicial Opinion starting with '=== JUDICIAL OPINION & RATIONALE (LJP ENGINE) ==='. Do NOT include meta-commentary, internal thoughts, or phrases like 'The user wants me to...'."
+            "IMPORTANT: Output ONLY the official Judicial Opinion starting with '=== JUDICIAL OPINION & RATIONALE (LJP ENGINE) ===' and end with '___ END OF JUDICIAL OPINION & DECREE ___'. Do NOT include meta-commentary or internal thoughts."
         )
         user_prompt = (
             f"=== JUDICIAL OPINION & RATIONALE (LJP ENGINE) ===\n"
@@ -520,7 +532,7 @@ class JudgeAgent:
             f"APPELLANT BRIEF:\n{defense_arg}\n\n"
             f"RESPONDENT REBUTTAL:\n{prosecutor_arg}\n\n"
             f"PREDICTED OUTCOME:\n{predicted_verdict} (Confidence: {probabilities[predicted_verdict]*100:.1f}%)\n\n"
-            f"Draft a Judicial Opinion & Decree (STRICT MAXIMUM 500 WORDS, Paragraphs & Bullet Points)."
+            f"Draft a Judicial Opinion & Decree (STRICT MAXIMUM 500 WORDS, Paragraphs & Bullet Points). Conclude with ___ END OF JUDICIAL OPINION & DECREE ___."
         )
 
         llm_opinion, _ = self.llm_client.generate(user_prompt, sys_prompt, max_tokens=4000, status_callback=status_callback)
@@ -538,6 +550,10 @@ class JudgeAgent:
             )
             for verdict, prob in sorted(probabilities.items(), key=lambda x: x[1], reverse=True):
                 llm_opinion += f"      - {verdict:25s}: {prob * 100:5.1f}%\n"
+
+        llm_opinion = llm_opinion.strip()
+        if not llm_opinion.endswith("___ END OF JUDICIAL OPINION & DECREE ___") and not llm_opinion.endswith("___ END ___"):
+            llm_opinion += "\n\n___ END OF JUDICIAL OPINION & DECREE ___"
 
         return {
             "predicted_verdict": predicted_verdict,
