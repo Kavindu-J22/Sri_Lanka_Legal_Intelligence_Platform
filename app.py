@@ -241,17 +241,33 @@ with tab1:
     st.markdown("### 📝 Enter Family Law Appellate Case Facts")
     st.caption("Input or paste factual details of an Appellate Family Law case (Divorce, Custody, Maintenance, Alimony).")
 
-    # Text Area for input
+    # Callback to safely clear text area before widget instantiation
+    def clear_text_callback():
+        st.session_state["case_facts_text"] = ""
+
+    # Initialize session state for text input and preset tracking
+    if "case_facts_text" not in st.session_state:
+        st.session_state["case_facts_text"] = preset_text
+
+    if "prev_preset" not in st.session_state or st.session_state["prev_preset"] != selected_preset_name:
+        st.session_state["case_facts_text"] = preset_text
+        st.session_state["prev_preset"] = selected_preset_name
+
+    # Text Area for input bound to session state key
     case_facts_input = st.text_area(
         "Appellate Case Description:",
-        value=preset_text,
+        key="case_facts_text",
         height=140,
         help="Type or paste legal case facts here."
     )
 
-    col_btn, col_space = st.columns([1, 4])
-    with col_btn:
+    col_btn1, col_btn2, col_space = st.columns([1.5, 1, 3])
+    with col_btn1:
         run_analysis = st.button("🚀 Run Multi-Agent Analysis", type="primary", use_container_width=True)
+    with col_btn2:
+        st.button("🧹 Clear Text", type="secondary", use_container_width=True, on_click=clear_text_callback)
+
+
 
     if run_analysis and case_facts_input.strip():
         framework = load_framework()
