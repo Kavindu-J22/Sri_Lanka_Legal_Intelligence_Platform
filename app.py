@@ -272,8 +272,13 @@ with tab1:
     if run_analysis and case_facts_input.strip():
         framework = load_framework()
 
-        with st.spinner("Executing 4-Agent Debate Trace & LJP Softmax Engine..."):
-            res = framework.run_pipeline(case_facts_input.strip())
+        with st.status("🚀 Initializing 4-Agent Adversarial Debate & LJP Engine...", expanded=True) as status_box:
+            def update_progress(step_num, message):
+                status_box.update(label=f"⏳ Step {step_num}/4: {message}", state="running")
+                st.write(f"✅ **Step {step_num}/4**: {message}")
+
+            res = framework.run_pipeline(case_facts_input.strip(), progress_callback=update_progress)
+            status_box.update(label="🎉 4-Agent Debate & LJP Prediction Completed Successfully!", state="complete", expanded=False)
 
         st.markdown("---")
         st.markdown("## 🎯 Prediction & Multi-Agent Debate Output")

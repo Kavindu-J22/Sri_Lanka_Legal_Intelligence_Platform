@@ -69,96 +69,117 @@ class AtriaLLMClient:
         if self.api_key:
             try:
                 from openai import OpenAI
-                self.client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=40.0)
+                self.client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=60.0)
             except Exception as e:
                 print(f"[Atria Client Notice]: OpenAI SDK init info: {e}")
 
-
-    def generate(self, prompt: str, system_prompt: str, max_tokens: int = 800, temperature: float = 0.3) -> str:
-        """Call Atria ASI API for LLM generation; returns None on failure to trigger fallback."""
+    def generate(self, prompt: str, system_prompt: str, max_tokens: int = 4000, temperature: float = 0.3, status_callback=None) -> str:
+        """Call Atria ASI API for LLM generation; handles rate limits with automatic retries (up to 5 attempts) and strictly prevents scratchpad leaks."""
         if not self.client:
             return None
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=max_tokens,
-                temperature=temperature
-            )
-            if response and response.choices:
-                msg = response.choices[0].message
-                text = getattr(msg, "content", None) or getattr(msg, "reasoning_content", None)
-                if text:
-                    return str(text).strip()
-            return None
-        except Exception as e:
-            print(f"[Atria LLM API Call Info]: {e}")
-            return None
 
+        strict_system_prompt = (
+            f"{system_prompt}\n\n"
+            "CRITICAL OUTPUT INSTRUCTION:\n"
+            "1. Keep internal reasoning concise.\n"
+            "2. Format the response strictly using clear paragraphs and bullet points.\n"
+            "3. Output ONLY the official, complete, formatted legal document.\n"
+            "4. Do NOT output internal scratchpads, planning steps, translation notes, outline planning, or phrases like 'The user wants me to...'.\n"
+            "5. Begin IMMEDIATELY with the official document header."
+        )
 
+        max_retries = 5
+        backoff_seconds = 12.0
 
-class DeepSeekLLMClient:
-    """Fallback DeepSeek LLM Client wrapper for Multi-Agent Legal Reasoning."""
-
-    def __init__(self, api_key: str = None):
-        self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY", "").strip()
-        self.base_url = "https://api.deepseek.com"
-        self.model = "deepseek-chat"
-        self.client = None
-        if self.api_key:
+        for attempt in range(max_retries):
             try:
-                from openai import OpenAI
-                self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": strict_system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=max_tokens,
+                    temperature=temperature
+                )
+                if response and response.choices:
+                    msg = response.choices[0].message
+                    content_text = getattr(msg, "content", None)
+                    
+                    if content_text:
+                        text_str = str(content_text).strip()
+                        clean_text = re.sub(r"<think>.*?</think>", "", text_str, flags=re.DOTALL).strip()
+                        
+                        official_headers = [
+                            "=== LEGAL FACT SHEET",
+                            "=== DEFENSE COUNSEL",
+                            "=== PROSECUTOR",
+                            "=== JUDICIAL OPINION",
+                            "IN THE COURT OF APPEAL",
+                            "LEGAL FACT SHEET",
+                            "MAY IT PLEASE THE COURT",
+                            "1. STATEMENT OF CLAIM",
+                            "1. DECREE OF THE COURT",
+                            "1. COUNTER-STATEMENT"
+                        ]
+                        for h in official_headers:
+                            idx = clean_text.find(h)
+                            if idx != -1:
+                                clean_text = clean_text[idx:]
+                                break
+                        else:
+                            lines = clean_text.split('\n')
+                            filtered = []
+                            started = False
+                            thinking_starters = ("the user wants", "let me translate", "the retrieved precedents", "i should produce", "i must be", "structure:", "i can mention", "also note:", "let me make", "given the audience", "so i should")
+                            for line in lines:
+                                l_strip = line.strip()
+                                if not started:
+                                    if any(l_strip.lower().startswith(ts) for ts in thinking_starters):
+                                        continue
+                                    if l_strip:
+                                        started = True
+                                        filtered.append(line)
+                                else:
+                                    filtered.append(line)
+                            clean_text = '\n'.join(filtered)
+
+                        clean_text = clean_text.strip()
+                        if clean_text:
+                            return clean_text
+
+                print(f"[Atria LLM Warning]: Content was empty on attempt {attempt + 1}. Retrying...")
             except Exception as e:
-                print(f"[DeepSeek Client Notice]: OpenAI package initialization info: {e}")
+                err_msg = str(e)
+                print(f"[Atria LLM API Call Info (Attempt {attempt + 1}/{max_retries})]: {err_msg}")
+                is_rate_limit = any(k in err_msg.lower() for k in ["429", "rate_limit", "overloaded", "requests per min", "rate limit reached"])
+                if is_rate_limit and attempt < max_retries - 1:
+                    sleep_time = backoff_seconds * (attempt + 1)
+                    wait_msg = f"Rate limit reached on request. Waiting {int(sleep_time)}s before retry (Attempt {attempt + 1}/{max_retries})..."
+                    print(f"[Atria Rate Limit Backoff]: {wait_msg}")
+                    if status_callback:
+                        status_callback(wait_msg)
+                    time.sleep(sleep_time)
+                else:
+                    if attempt < max_retries - 1:
+                        time.sleep(5.0)
+                    else:
+                        break
 
-    def generate(self, prompt: str, system_prompt: str, max_tokens: int = 800, temperature: float = 0.3) -> str:
-        """Call DeepSeek API for LLM generation; returns None on failure."""
-        if not self.client:
-            return None
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=max_tokens,
-                temperature=temperature
-            )
-            if response and response.choices:
-                msg = response.choices[0].message
-                text = getattr(msg, "content", None)
-                if text:
-                    return str(text).strip()
-            return None
-        except Exception as e:
-            print(f"[DeepSeek LLM API Call Info]: {e}")
-            return None
-
+        return None
 
 
 class UnifiedLLMClient:
-    """Unified LLM Client that prioritizes Atria ASI (Atria-Dawn-Preview) and falls back to DeepSeek / Local Engine."""
+    """Unified LLM Client using Atria ASI (Atria-Dawn-Preview) with local fallback engine."""
 
     def __init__(self):
         self.atria_client = AtriaLLMClient()
-        self.deepseek_client = DeepSeekLLMClient()
 
-    def generate(self, prompt: str, system_prompt: str, max_tokens: int = 800, temperature: float = 0.3) -> Tuple[str, str]:
-        """Try Atria ASI first, then DeepSeek, then return None for local engine fallback."""
-        # 1. Try Atria ASI
-        res = self.atria_client.generate(prompt, system_prompt, max_tokens=max_tokens, temperature=temperature)
+    def generate(self, prompt: str, system_prompt: str, max_tokens: int = 4000, temperature: float = 0.3, status_callback=None) -> Tuple[str, str]:
+        """Try Atria ASI with rate-limit retries, then fall back to local engine if API fails."""
+        res = self.atria_client.generate(prompt, system_prompt, max_tokens=max_tokens, temperature=temperature, status_callback=status_callback)
         if res:
             return res, "Atria-Dawn-Preview"
-
-        # 2. Try DeepSeek
-        res = self.deepseek_client.generate(prompt, system_prompt, max_tokens=max_tokens, temperature=temperature)
-        if res:
-            return res, "DeepSeek-Chat"
 
         return None, "Local-Engine"
 
@@ -300,20 +321,32 @@ class HybridLegalRetriever:
 
 
 class InvestigatorAgent:
-    """Agent 1: Analyzes user facts and queries ChromaDB to produce a Legal Fact Sheet & Precedent Context using Atria ASI LLM."""
+    """Agent 1: Analyzes user facts and queries ChromaDB to produce a Legal Fact Sheet & Precedent Context using Atria ASI LLM (Max 500 words)."""
 
     def __init__(self, retriever: HybridLegalRetriever, llm_client: UnifiedLLMClient):
         self.retriever = retriever
         self.llm_client = llm_client
 
-    def process(self, case_facts: str) -> Dict[str, Any]:
+    def process(self, case_facts: str, status_callback=None) -> Dict[str, Any]:
         precedents = self.retriever.retrieve_precedents(case_facts, top_k=4)
         statutes = self.retriever.retrieve_statutes(case_facts, top_k=2)
 
-        sys_prompt = "You are an expert Senior Legal Investigator for Appellate Family Law in Sri Lanka. Synthesize the user's case facts alongside retrieved historical precedents and statutory provisions into a structured, objective Legal Fact Sheet."
-        user_prompt = f"CASE FACTS:\n{case_facts}\n\nRETRIEVED PRECEDENTS:\n{json.dumps(precedents, indent=2)}\n\nRETRIEVED STATUTES:\n{json.dumps(statutes, indent=2)}\n\nGenerate a structured Legal Fact Sheet summarizing material facts, core legal issues, and precedent relevance."
+        sys_prompt = (
+            "You are an expert Senior Legal Investigator for Appellate Family Law in Sri Lanka. "
+            "Synthesize the user's case facts alongside retrieved historical precedents and statutory provisions into a structured, objective Legal Fact Sheet. "
+            "STRICT FORMATTING RULE: Present the answer strictly using clear paragraphs and bullet points. "
+            "STRICT WORD COUNT CONSTRAINT: MAXIMUM WORD COUNT IS 500 WORDS. Do NOT exceed 500 words under any circumstances. "
+            "IMPORTANT: Output ONLY the official legal document starting with '=== LEGAL FACT SHEET & PRECEDENT CONTEXT ==='. Do NOT include meta-commentary, internal thoughts, or phrases like 'The user wants me to...'."
+        )
+        user_prompt = (
+            f"=== LEGAL FACT SHEET & PRECEDENT CONTEXT ===\n"
+            f"CASE FACTS:\n{case_facts}\n\n"
+            f"RETRIEVED PRECEDENTS:\n{json.dumps(precedents, indent=2)}\n\n"
+            f"RETRIEVED STATUTES:\n{json.dumps(statutes, indent=2)}\n\n"
+            f"Generate a structured Legal Fact Sheet (STRICT MAXIMUM 500 WORDS, Paragraphs & Bullet Points)."
+        )
         
-        llm_fact_sheet, model_used = self.llm_client.generate(user_prompt, sys_prompt, max_tokens=600)
+        llm_fact_sheet, model_used = self.llm_client.generate(user_prompt, sys_prompt, max_tokens=4000, status_callback=status_callback)
 
         if not llm_fact_sheet:
             words = case_facts.split()
@@ -325,12 +358,12 @@ class InvestigatorAgent:
             )
             for i, prec in enumerate(precedents, 1):
                 llm_fact_sheet += (
-                    f"  [{i}] Case ID: {prec['doc_id']} | Prior Ruling: {prec['verdict']} | Sim: {prec['similarity_score']}\n"
+                    f"  • [{i}] Case ID: {prec['doc_id']} | Prior Ruling: {prec['verdict']} | Sim: {prec['similarity_score']}\n"
                     f"      Global Summary: {prec['global_summary'][:200]}...\n"
                 )
             llm_fact_sheet += f"\nRetrieved Statutory Provisions ({len(statutes)} Sections Found):\n"
             for i, stat in enumerate(statutes, 1):
-                llm_fact_sheet += f"  [{i}] Source: {stat['filename']} | Sim: {stat['similarity_score']}\n"
+                llm_fact_sheet += f"  • [{i}] Source: {stat['filename']} | Sim: {stat['similarity_score']}\n"
 
         return {
             "fact_sheet_text": llm_fact_sheet,
@@ -342,20 +375,32 @@ class InvestigatorAgent:
 
 
 class DefenseAgent:
-    """Agent 2 (Appellant Counsel): Constructs legal argument in favor of the appellant seeking relief using Atria ASI LLM."""
+    """Agent 2 (Appellant Counsel): Constructs legal argument in favor of the appellant using Atria ASI LLM (Max 300 words)."""
 
     def __init__(self, llm_client: UnifiedLLMClient):
         self.llm_client = llm_client
 
-    def process(self, context: Dict[str, Any]) -> str:
+    def process(self, context: Dict[str, Any], status_callback=None) -> str:
         case_facts = context["case_facts"]
         precedents = context["precedents"]
         statutes = context["statutes"]
 
-        sys_prompt = "You are a leading Senior Appellate Defense Counsel advocating for the Appellant in Sri Lanka Appellate Family Law. Construct a highly persuasive, legal submission advocating for setting aside the lower court order or allowing the appeal, citing statutory grounds and precedents."
-        user_prompt = f"CASE FACTS:\n{case_facts}\n\nSUPPORTING PRECEDENTS:\n{json.dumps(precedents, indent=2)}\n\nSTATUTORY PROVISIONS:\n{json.dumps(statutes, indent=2)}\n\nDraft a formal Appellant Legal Submission with Statement of Claim, Statutory Grounds, Precedent Analysis, and Prayer for Relief."
+        sys_prompt = (
+            "You are a leading Senior Appellate Defense Counsel advocating for the Appellant in Sri Lanka Appellate Family Law. "
+            "Construct a highly persuasive legal submission advocating for setting aside the lower court order or allowing the appeal, citing statutory grounds and precedents. "
+            "STRICT FORMATTING RULE: Present the answer strictly using clear paragraphs and bullet points. "
+            "STRICT WORD COUNT CONSTRAINT: MAXIMUM WORD COUNT IS 300 WORDS. Do NOT exceed 300 words under any circumstances. "
+            "IMPORTANT: Output ONLY the official legal brief starting with '=== DEFENSE COUNSEL LEGAL SUBMISSION (APPELLANT) ==='. Do NOT include meta-commentary, internal thoughts, or phrases like 'The user wants me to...'."
+        )
+        user_prompt = (
+            f"=== DEFENSE COUNSEL LEGAL SUBMISSION (APPELLANT) ===\n"
+            f"CASE FACTS:\n{case_facts}\n\n"
+            f"SUPPORTING PRECEDENTS:\n{json.dumps(precedents, indent=2)}\n\n"
+            f"STATUTORY PROVISIONS:\n{json.dumps(statutes, indent=2)}\n\n"
+            f"Draft an Appellant Legal Submission with Statement of Claim, Statutory Grounds, Precedent Analysis, and Prayer for Relief (STRICT MAXIMUM 300 WORDS, Paragraphs & Bullet Points)."
+        )
 
-        llm_arg, _ = self.llm_client.generate(user_prompt, sys_prompt, max_tokens=700)
+        llm_arg, _ = self.llm_client.generate(user_prompt, sys_prompt, max_tokens=4000, status_callback=status_callback)
 
         if not llm_arg:
             allowed_precedents = [p for p in precedents if p["verdict"] in ["Appeal Allowed", "Order Set Aside", "Appeal Allowed in Part"]]
@@ -376,19 +421,31 @@ class DefenseAgent:
 
 
 class ProsecutorAgent:
-    """Agent 3 (Opposing Counsel): Dismantles defense claims and asserts counter-arguments & precedents using Atria ASI LLM."""
+    """Agent 3 (Opposing Counsel): Dismantles defense claims using Atria ASI LLM (Max 300 words)."""
 
     def __init__(self, llm_client: UnifiedLLMClient):
         self.llm_client = llm_client
 
-    def process(self, context: Dict[str, Any], defense_argument: str) -> str:
+    def process(self, context: Dict[str, Any], defense_argument: str, status_callback=None) -> str:
         case_facts = context["case_facts"]
         precedents = context["precedents"]
 
-        sys_prompt = "You are Senior Appellate Counsel for the Respondent in Sri Lanka Family Law. Construct a powerful rebuttal brief dismantling the Appellant's arguments, asserting that the lower court decree is sound in law and supported by evidence."
-        user_prompt = f"CASE FACTS:\n{case_facts}\n\nAPPELLANT BRIEF:\n{defense_argument}\n\nRETRIEVED PRECEDENTS:\n{json.dumps(precedents, indent=2)}\n\nDraft a formal Respondent Rebuttal Brief asserting why the lower court decree should be affirmed and the appeal dismissed."
+        sys_prompt = (
+            "You are Senior Appellate Counsel for the Respondent in Sri Lanka Family Law. "
+            "Construct a powerful rebuttal brief dismantling the Appellant's arguments, asserting that the lower court decree is sound in law and supported by evidence. "
+            "STRICT FORMATTING RULE: Present the answer strictly using clear paragraphs and bullet points. "
+            "STRICT WORD COUNT CONSTRAINT: MAXIMUM WORD COUNT IS 300 WORDS. Do NOT exceed 300 words under any circumstances. "
+            "IMPORTANT: Output ONLY the official legal brief starting with '=== PROSECUTOR / RESPONDENT LEGAL SUBMISSION ==='. Do NOT include meta-commentary, internal thoughts, or phrases like 'The user wants me to...'."
+        )
+        user_prompt = (
+            f"=== PROSECUTOR / RESPONDENT LEGAL SUBMISSION ===\n"
+            f"CASE FACTS:\n{case_facts}\n\n"
+            f"APPELLANT BRIEF:\n{defense_argument}\n\n"
+            f"RETRIEVED PRECEDENTS:\n{json.dumps(precedents, indent=2)}\n\n"
+            f"Draft a Respondent Rebuttal Brief asserting why the lower court decree should be affirmed and the appeal dismissed (STRICT MAXIMUM 300 WORDS, Paragraphs & Bullet Points)."
+        )
 
-        llm_rebuttal, _ = self.llm_client.generate(user_prompt, sys_prompt, max_tokens=700)
+        llm_rebuttal, _ = self.llm_client.generate(user_prompt, sys_prompt, max_tokens=4000, status_callback=status_callback)
 
         if not llm_rebuttal:
             dismissed_precedents = [p for p in precedents if p["verdict"] in ["Appeal Dismissed", "Application Dismissed", "Judgment Affirmed"]]
@@ -409,12 +466,12 @@ class ProsecutorAgent:
 
 
 class JudgeAgent:
-    """Agent 4 (Legal Judgment Prediction & Softmax Classifier): Evaluates debate trace and computes LJP probabilities using Atria ASI LLM & Softmax Engine."""
+    """Agent 4 (Legal Judgment Prediction & Softmax Classifier): Evaluates debate trace using Atria ASI LLM & Softmax Engine (Max 500 words)."""
 
     def __init__(self, llm_client: UnifiedLLMClient):
         self.llm_client = llm_client
 
-    def process(self, context: Dict[str, Any], defense_arg: str, prosecutor_arg: str) -> Dict[str, Any]:
+    def process(self, context: Dict[str, Any], defense_arg: str, prosecutor_arg: str, status_callback=None) -> Dict[str, Any]:
         case_facts = context["case_facts"]
         precedents = context["precedents"]
 
@@ -450,10 +507,23 @@ class JudgeAgent:
         predicted_verdict = max(probabilities.items(), key=lambda x: x[1])[0]
 
         # 2. Call Atria ASI LLM for Judicial Opinion Generation
-        sys_prompt = "You are an eminent Appellate Judge presiding over Sri Lanka Appellate Family Law. Evaluate the facts, appellant brief, and respondent rebuttal. Provide a formal Judicial Decree & Ratio Decidendi."
-        user_prompt = f"CASE FACTS:\n{case_facts}\n\nAPPELLANT BRIEF:\n{defense_arg}\n\nRESPONDENT REBUTTAL:\n{prosecutor_arg}\n\nPREDICTED OUTCOME:\n{predicted_verdict} (Confidence: {probabilities[predicted_verdict]*100:.1f}%)\n\nDraft a formal Judicial Opinion & Decree."
+        sys_prompt = (
+            "You are an eminent Appellate Judge presiding over Sri Lanka Appellate Family Law. "
+            "Evaluate the facts, appellant brief, and respondent rebuttal. Provide a formal Judicial Decree & Ratio Decidendi. "
+            "STRICT FORMATTING RULE: Present the answer strictly using clear paragraphs and bullet points. "
+            "STRICT WORD COUNT CONSTRAINT: MAXIMUM WORD COUNT IS 500 WORDS. Do NOT exceed 500 words under any circumstances. "
+            "IMPORTANT: Output ONLY the official Judicial Opinion starting with '=== JUDICIAL OPINION & RATIONALE (LJP ENGINE) ==='. Do NOT include meta-commentary, internal thoughts, or phrases like 'The user wants me to...'."
+        )
+        user_prompt = (
+            f"=== JUDICIAL OPINION & RATIONALE (LJP ENGINE) ===\n"
+            f"CASE FACTS:\n{case_facts}\n\n"
+            f"APPELLANT BRIEF:\n{defense_arg}\n\n"
+            f"RESPONDENT REBUTTAL:\n{prosecutor_arg}\n\n"
+            f"PREDICTED OUTCOME:\n{predicted_verdict} (Confidence: {probabilities[predicted_verdict]*100:.1f}%)\n\n"
+            f"Draft a Judicial Opinion & Decree (STRICT MAXIMUM 500 WORDS, Paragraphs & Bullet Points)."
+        )
 
-        llm_opinion, _ = self.llm_client.generate(user_prompt, sys_prompt, max_tokens=700)
+        llm_opinion, _ = self.llm_client.generate(user_prompt, sys_prompt, max_tokens=4000, status_callback=status_callback)
 
         if not llm_opinion:
             top_prob = probabilities[predicted_verdict]
@@ -487,21 +557,39 @@ class MultiAgentLJPFramework:
         self.prosecutor = ProsecutorAgent(self.llm_client)
         self.judge = JudgeAgent(self.llm_client)
 
-    def run_pipeline(self, case_facts: str) -> Dict[str, Any]:
-        """Execute full Multi-Agent Adversarial Debate & LJP Prediction pipeline."""
+    def run_pipeline(self, case_facts: str, progress_callback=None) -> Dict[str, Any]:
+        """Execute full Multi-Agent Adversarial Debate & LJP Prediction pipeline with optional progress updates."""
         start_time = time.time()
 
+        def make_agent_callback(step_num, step_name):
+            if not progress_callback:
+                return None
+            def cb(msg):
+                progress_callback(step_num, f"{step_name} [{msg}]")
+            return cb
+
         # Step 1: Investigator Agent
-        context = self.investigator.process(case_facts)
+        if progress_callback:
+            progress_callback(1, "🔍 Investigator Agent analyzing case facts & retrieving precedents...")
+        context = self.investigator.process(case_facts, status_callback=make_agent_callback(1, "🔍 Investigator Agent"))
+        time.sleep(2.0)
 
         # Step 2: Defense Agent
-        defense_arg = self.defense.process(context)
+        if progress_callback:
+            progress_callback(2, "🛡️ Appellant Defense Counsel constructing legal submission...")
+        defense_arg = self.defense.process(context, status_callback=make_agent_callback(2, "🛡️ Defense Counsel"))
+        time.sleep(2.0)
 
         # Step 3: Prosecutor Agent
-        prosecutor_arg = self.prosecutor.process(context, defense_arg)
+        if progress_callback:
+            progress_callback(3, "⚔️ Respondent Prosecutor drafting rebuttal brief...")
+        prosecutor_arg = self.prosecutor.process(context, defense_arg, status_callback=make_agent_callback(3, "⚔️ Respondent Counsel"))
+        time.sleep(2.0)
 
         # Step 4: Judge Agent (LJP & Softmax Classifier)
-        judge_res = self.judge.process(context, defense_arg, prosecutor_arg)
+        if progress_callback:
+            progress_callback(4, "👨‍⚖️ Senior Judge computing LJP probabilities & final decree...")
+        judge_res = self.judge.process(context, defense_arg, prosecutor_arg, status_callback=make_agent_callback(4, "👨‍⚖️ Senior Judge"))
 
         elapsed_sec = round(time.time() - start_time, 3)
 
