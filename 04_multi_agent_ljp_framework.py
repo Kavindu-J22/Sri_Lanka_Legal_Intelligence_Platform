@@ -310,7 +310,7 @@ class InvestigatorAgent:
         precedents = self.retriever.retrieve_precedents(case_facts, top_k=4)
         statutes = self.retriever.retrieve_statutes(case_facts, top_k=2)
 
-        sys_prompt = "You are an expert Senior Legal Investigator for Appellate Family Law in Sri Lanka. Synthesize the user's case facts alongside retrieved historical precedents and statutory provisions into a structured, objective Legal Fact Sheet."
+        sys_prompt = "You are an expert Senior Legal Investigator for Appellate Family Law in Sri Lanka. Synthesize the user's case facts alongside retrieved historical precedents and statutory provisions into a structured, objective Legal Fact Sheet. Only use paragraph format and bullet points only for lists. Maximum words count 500. do not exceed this limit. strictly follow these instructions and dont add any additional information."
         user_prompt = f"CASE FACTS:\n{case_facts}\n\nRETRIEVED PRECEDENTS:\n{json.dumps(precedents, indent=2)}\n\nRETRIEVED STATUTES:\n{json.dumps(statutes, indent=2)}\n\nGenerate a structured Legal Fact Sheet summarizing material facts, core legal issues, and precedent relevance."
         
         llm_fact_sheet, model_used = self.llm_client.generate(user_prompt, sys_prompt, max_tokens=600)
@@ -352,7 +352,7 @@ class DefenseAgent:
         precedents = context["precedents"]
         statutes = context["statutes"]
 
-        sys_prompt = "You are a leading Senior Appellate Defense Counsel advocating for the Appellant in Sri Lanka Appellate Family Law. Construct a highly persuasive, legal submission advocating for setting aside the lower court order or allowing the appeal, citing statutory grounds and precedents."
+        sys_prompt = "You are a leading Senior Appellate Defense Counsel advocating for the Appellant in Sri Lanka Appellate Family Law. Construct a highly persuasive, legal submission advocating for setting aside the lower court order or allowing the appeal, citing statutory grounds and precedents. Only use paragraph format and bullet points only for lists. Maximum words count 700. do not exceed this limit. strictly follow these instructions and dont add any additional information."
         user_prompt = f"CASE FACTS:\n{case_facts}\n\nSUPPORTING PRECEDENTS:\n{json.dumps(precedents, indent=2)}\n\nSTATUTORY PROVISIONS:\n{json.dumps(statutes, indent=2)}\n\nDraft a formal Appellant Legal Submission with Statement of Claim, Statutory Grounds, Precedent Analysis, and Prayer for Relief."
 
         llm_arg, _ = self.llm_client.generate(user_prompt, sys_prompt, max_tokens=700)
@@ -385,7 +385,7 @@ class ProsecutorAgent:
         case_facts = context["case_facts"]
         precedents = context["precedents"]
 
-        sys_prompt = "You are Senior Appellate Counsel for the Respondent in Sri Lanka Family Law. Construct a powerful rebuttal brief dismantling the Appellant's arguments, asserting that the lower court decree is sound in law and supported by evidence."
+        sys_prompt = "You are Senior Appellate Counsel for the Respondent in Sri Lanka Family Law. Construct a powerful rebuttal brief dismantling the Appellant's arguments, asserting that the lower court decree is sound in law and supported by evidence. Only use paragraph format and bullet points only for lists. Maximum words count 700. do not exceed this limit. strictly follow these instructions and dont add any additional information."
         user_prompt = f"CASE FACTS:\n{case_facts}\n\nAPPELLANT BRIEF:\n{defense_argument}\n\nRETRIEVED PRECEDENTS:\n{json.dumps(precedents, indent=2)}\n\nDraft a formal Respondent Rebuttal Brief asserting why the lower court decree should be affirmed and the appeal dismissed."
 
         llm_rebuttal, _ = self.llm_client.generate(user_prompt, sys_prompt, max_tokens=700)
@@ -450,7 +450,7 @@ class JudgeAgent:
         predicted_verdict = max(probabilities.items(), key=lambda x: x[1])[0]
 
         # 2. Call Atria ASI LLM for Judicial Opinion Generation
-        sys_prompt = "You are an eminent Appellate Judge presiding over Sri Lanka Appellate Family Law. Evaluate the facts, appellant brief, and respondent rebuttal. Provide a formal Judicial Decree & Ratio Decidendi."
+        sys_prompt = "You are an eminent Appellate Judge presiding over Sri Lanka Appellate Family Law. Evaluate the facts, appellant brief, and respondent rebuttal. Provide a formal Judicial Decree & Ratio Decidendi. Only use paragraph format and bullet points only for lists. Maximum words count 700. do not exceed this limit. strictly follow these instructions and dont add any additional information."
         user_prompt = f"CASE FACTS:\n{case_facts}\n\nAPPELLANT BRIEF:\n{defense_arg}\n\nRESPONDENT REBUTTAL:\n{prosecutor_arg}\n\nPREDICTED OUTCOME:\n{predicted_verdict} (Confidence: {probabilities[predicted_verdict]*100:.1f}%)\n\nDraft a formal Judicial Opinion & Decree."
 
         llm_opinion, _ = self.llm_client.generate(user_prompt, sys_prompt, max_tokens=700)
