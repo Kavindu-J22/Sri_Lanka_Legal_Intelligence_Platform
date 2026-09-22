@@ -3,10 +3,14 @@ import sys
 import json
 import time
 from pathlib import Path
+from dotenv import load_dotenv
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+
+# Auto-load .env environment variables
+load_dotenv()
 
 # Ensure UTF-8 output on Windows
 if sys.platform == "win32":
@@ -15,6 +19,7 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8")
     except Exception:
         pass
+
 
 import importlib
 _mod = importlib.import_module("04_multi_agent_ljp_framework")
