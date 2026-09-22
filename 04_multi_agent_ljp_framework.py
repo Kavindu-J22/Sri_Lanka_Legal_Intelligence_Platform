@@ -43,8 +43,20 @@ CANONICAL_VERDICTS = [
 ]
 
 
+FAMILY_LAW_KEYWORDS = [
+    "divorce", "maintenance", "custody", "matrimonial", "marriage", "alimony",
+    "guardianship", "desertion", "cruelty", "spousal", "child", "civil",
+    "kandyan", "thesawalamai", "muslim marriage", "parental"
+]
+
+CRIMINAL_EXCLUSION_KEYWORDS = [
+    "criminal procedure", "penal code", "rigorous imprisonment", "bailable",
+    "indictment", "accused", "narcotics", "murder", "theft", "robbery", "bail"
+]
+
+
 class HybridLegalRetriever:
-    """Retriever for querying ChromaDB case_law_collection and statutory_acts_collection."""
+    """Retriever for querying ChromaDB case_law_collection and statutory_acts_collection with deduplication and domain filtering."""
 
     def __init__(self, vector_db_path: Path):
         self.vector_db_path = vector_db_path
@@ -62,60 +74,122 @@ class HybridLegalRetriever:
             self.stat_col = None
 
     def retrieve_precedents(self, query_text: str, top_k: int = 4) -> List[Dict[str, Any]]:
-        """Retrieve top-k relevant SAC chunks from case_law_collection."""
+        """Retrieve top-k relevant SAC chunks from case_law_collection with deduplication and Family Law keyword boosting."""
         if not self.case_col or self.case_col.count() == 0:
             return []
 
         query_emb = self.model.encode([query_text], show_progress_bar=False).tolist()
+        n_candidates = max(top_k * 6, 25)
         results = self.case_col.query(
             query_embeddings=query_emb,
-            n_results=top_k,
+            n_results=min(n_candidates, self.case_col.count()),
             include=["documents", "metadatas", "distances"]
         )
 
-        precedents = []
+        candidates = []
         if results and results.get("documents"):
             docs = results["documents"][0]
             metas = results["metadatas"][0]
             dists = results["distances"][0]
+
             for doc, meta, dist in zip(docs, metas, dists):
-                sim_score = 1.0 / (1.0 + dist)  # convert distance to similarity score
-                precedents.append({
+                base_sim = 1.0 / (1.0 + dist)
+                doc_text_lower = (doc + " " + meta.get("global_summary", "") + " " + meta.get("keywords", "")).lower()
+
+                # Criminal Exclusion Check
+                is_criminal = any(ck in doc_text_lower for ck in CRIMINAL_EXCLUSION_KEYWORDS)
+
+                # Family Law Keyword Boost
+                fl_match_count = sum(1 for fk in FAMILY_LAW_KEYWORDS if fk in doc_text_lower)
+                boost = 1.0 + (0.05 * min(fl_match_count, 5))
+
+                if is_criminal and fl_match_count == 0:
+                    adjusted_score = base_sim * 0.2
+                else:
+                    adjusted_score = base_sim * boost
+
+                candidates.append({
                     "doc_id": meta.get("doc_id", "N/A"),
                     "verdict": meta.get("verdict", "N/A"),
                     "global_summary": meta.get("global_summary", "N/A"),
                     "keywords": meta.get("keywords", ""),
                     "text": doc,
-                    "similarity_score": round(sim_score, 4)
+                    "similarity_score": round(adjusted_score, 4),
+                    "raw_sim": round(base_sim, 4),
+                    "is_family_law": fl_match_count > 0
                 })
-        return precedents
+
+        # Sort by adjusted similarity score descending
+        candidates.sort(key=lambda x: x["similarity_score"], reverse=True)
+
+        # Deduplicate by doc_id (unique case per precedent)
+        deduped_precedents = []
+        seen_doc_ids = set()
+        for cand in candidates:
+            d_id = cand["doc_id"]
+            if d_id not in seen_doc_ids:
+                seen_doc_ids.add(d_id)
+                deduped_precedents.append(cand)
+                if len(deduped_precedents) == top_k:
+                    break
+
+        return deduped_precedents
 
     def retrieve_statutes(self, query_text: str, top_k: int = 2) -> List[Dict[str, Any]]:
-        """Retrieve top-k relevant statutory sections from statutory_acts_collection."""
+        """Retrieve top-k relevant statutory sections from statutory_acts_collection with deduplication."""
         if not self.stat_col or self.stat_col.count() == 0:
             return []
 
         query_emb = self.model.encode([query_text], show_progress_bar=False).tolist()
+        n_candidates = max(top_k * 6, 20)
         results = self.stat_col.query(
             query_embeddings=query_emb,
-            n_results=top_k,
+            n_results=min(n_candidates, self.stat_col.count()),
             include=["documents", "metadatas", "distances"]
         )
 
-        statutes = []
+        candidates = []
         if results and results.get("documents"):
             docs = results["documents"][0]
             metas = results["metadatas"][0]
             dists = results["distances"][0]
+
             for doc, meta, dist in zip(docs, metas, dists):
-                sim_score = 1.0 / (1.0 + dist)
-                statutes.append({
+                base_sim = 1.0 / (1.0 + dist)
+                filename = meta.get("filename", "N/A")
+                doc_text_lower = (doc + " " + filename).lower()
+
+                is_criminal = any(ck in doc_text_lower for ck in CRIMINAL_EXCLUSION_KEYWORDS)
+                fl_match_count = sum(1 for fk in FAMILY_LAW_KEYWORDS if fk in doc_text_lower)
+                boost = 1.0 + (0.05 * min(fl_match_count, 5))
+
+                if is_criminal and fl_match_count == 0:
+                    adjusted_score = base_sim * 0.2
+                else:
+                    adjusted_score = base_sim * boost
+
+                candidates.append({
                     "doc_id": meta.get("doc_id", "N/A"),
-                    "filename": meta.get("filename", "N/A"),
+                    "filename": filename,
                     "text": doc,
-                    "similarity_score": round(sim_score, 4)
+                    "similarity_score": round(adjusted_score, 4),
+                    "raw_sim": round(base_sim, 4)
                 })
-        return statutes
+
+        candidates.sort(key=lambda x: x["similarity_score"], reverse=True)
+
+        deduped_statutes = []
+        seen_keys = set()
+        for cand in candidates:
+            key = cand["filename"] if cand["filename"] != "N/A" else cand["doc_id"]
+            if key not in seen_keys:
+                seen_keys.add(key)
+                deduped_statutes.append(cand)
+                if len(deduped_statutes) == top_k:
+                    break
+
+        return deduped_statutes
+
 
 
 class InvestigatorAgent:
