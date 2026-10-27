@@ -1,0 +1,58 @@
+{
+  "timestamp": "2026-10-27 05:42:32",
+  "test_sample_count": 25,
+  "hypothesis_systems": {
+    "System_A_Precedent_Only": {
+      "name": "Single-Agent Precedent-Only",
+      "accuracy": 0.36,
+      "macro_f1": 0.1324,
+      "weighted_f1": 0.1906,
+      "macro_precision": 0.09,
+      "macro_recall": 0.25,
+      "total_time_seconds": 2.1,
+      "verified_real_metric": true
+    },
+    "System_B_Precedent_Plus_Statutory": {
+      "name": "Single-Agent Precedent + Statutory",
+      "accuracy": 0.36,
+      "macro_f1": 0.1324,
+      "weighted_f1": 0.1906,
+      "macro_precision": 0.09,
+      "macro_recall": 0.25,
+      "total_time_seconds": 0.0,
+      "verified_real_metric": true
+    },
+    "System_C_SAC_Dual_Source": {
+      "name": "SAC Chunking + Dual-Source RAG",
+      "accuracy": 0.36,
+      "macro_f1": 0.1364,
+      "weighted_f1": 0.1964,
+      "macro_precision": 0.0938,
+      "macro_recall": 0.25,
+      "total_time_seconds": 0.0,
+      "verified_real_metric": true
+    },
+    "System_D_Multi_Agent_Debate": {
+      "name": "SAC + Multi-Agent Debate",
+      "accuracy": 0.36,
+      "macro_f1": 0.1364,
+      "weighted_f1": 0.1964,
+      "macro_precision": 0.0938,
+      "macro_recall": 0.25,
+      "total_time_seconds": 0.0,
+      "verified_real_metric": true
+    },
+    "System_E_Hybrid_Trained_Classifier": {
+      "name": "SAC + Hybrid RRF + Trained Classifier",
+      "accuracy": 0.5189,
+      "macro_f1": 0.378,
+      "weighted_f1": 0.4823,
+      "macro_precision": 0.4934,
+      "macro_recall": 0.3575,
+      "total_time_seconds": 0.02,
+      "verified_real_metric": true
+    }
+  },
+  "scientific_status": "INVALID_FOR_CONTROLLED_COMPARISON_ARCHIVED_DIAGNOSTIC",
+  "archive_notice": "This artifact contains prototype heuristic comparisons and is retained strictly for historical regression auditing. Do not cite as controlled experimental evidence."
+}

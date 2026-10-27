@@ -8,7 +8,10 @@ Decouples application code from local PersistentClient. Supports:
 3. Qdrant Cloud (managed cloud vector store)
 
 Credentials and endpoints are loaded securely via environment variables (.env)
-or Streamlit secrets.
+or Streamlit secrets (st.secrets).
+
+Never silently returns 0 on exceptions; raises typed errors or reports structured
+health status for the diagnostic panel.
 """
 
 import os
@@ -28,22 +31,48 @@ except Exception:
     pass
 
 
+class VectorStoreError(Exception):
+    """Base exception for all vector store failures."""
+    pass
+
+
+class VectorStoreAuthError(VectorStoreError):
+    """Authentication or authorization failure against the vector store."""
+    pass
+
+
+class VectorStoreConnectionError(VectorStoreError):
+    """Network connection, endpoint unreachable, or timeout error."""
+    pass
+
+
+class CollectionNotFoundError(VectorStoreError):
+    """The requested collection does not exist on the vector backend."""
+    pass
+
+
 def get_secret(key: str, default: str = "") -> str:
-    """Retrieve secret from environment variable or streamlit secrets if available."""
-    val = os.getenv(key)
-    if val:
-        return val.strip()
+    """Retrieve secret from Streamlit secrets (st.secrets) or environment variables."""
+    # First check streamlit secrets if running inside Streamlit
     try:
         import streamlit as st
         if hasattr(st, "secrets") and key in st.secrets:
-            return str(st.secrets[key]).strip()
+            val = str(st.secrets[key]).strip()
+            if val:
+                return val
     except Exception:
         pass
+
+    # Then check environment variables
+    val = os.getenv(key)
+    if val:
+        return val.strip()
+
     return default
 
 
 def string_to_uuid(id_str: str) -> str:
-    """Deterministically convert an arbitrary string ID into a valid UUID string (RFC 4122)."""
+    """Deterministically convert an arbitrary string ID into a valid RFC 4122 UUID string."""
     try:
         uuid.UUID(str(id_str))
         return str(id_str)
@@ -82,6 +111,11 @@ class BaseVectorCollection(ABC):
     def get(self, ids: Optional[List[str]] = None, include: Optional[List[str]] = None) -> Dict[str, Any]:
         pass
 
+    @abstractmethod
+    def get_status(self) -> Dict[str, Any]:
+        """Return structured sanitized health status for diagnostic panels."""
+        pass
+
 
 class LocalChromaCollectionWrapper(BaseVectorCollection):
     """Wraps native ChromaDB collection with resilient batching."""
@@ -114,25 +148,67 @@ class LocalChromaCollectionWrapper(BaseVectorCollection):
             kwargs["include"] = include
         return self._col.get(**kwargs)
 
+    def get_status(self) -> Dict[str, Any]:
+        col_name = getattr(self._col, "name", "local_chroma")
+        try:
+            cnt = self._col.count()
+            return {
+                "status": "healthy" if cnt > 0 else "empty_confirmed",
+                "backend": "local",
+                "backend_label": "Local ChromaDB",
+                "collection_name": col_name,
+                "count": cnt,
+                "error": None
+            }
+        except Exception as e:
+            return {
+                "status": "connection_error",
+                "backend": "local",
+                "backend_label": "Local ChromaDB",
+                "collection_name": col_name,
+                "count": None,
+                "error": f"Local storage access error: {type(e).__name__}"
+            }
+
 
 class QdrantCollectionWrapper(BaseVectorCollection):
     """Wraps Qdrant cloud client with drop-in ChromaDB API compatibility."""
 
-    def __init__(self, client: Any, collection_name: str, vector_size: int = 384):
+    def __init__(self, client: Any, collection_name: str, vector_size: int = 384, read_only: bool = False):
         self.client = client
         self.collection_name = collection_name
         self.vector_size = vector_size
-        self._ensure_collection()
+        self.read_only = read_only
+        self._init_error: Optional[Exception] = None
+        try:
+            self._ensure_collection()
+        except Exception as e:
+            self._init_error = e
 
     def _ensure_collection(self):
         from qdrant_client.models import Distance, VectorParams
-        if not self.client.collection_exists(self.collection_name):
+        try:
+            exists = self.client.collection_exists(self.collection_name)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "401" in err_str or "403" in err_str or "unauthorized" in err_str or "api-key" in err_str:
+                raise VectorStoreAuthError(f"Qdrant Cloud authentication failed: {e}")
+            raise VectorStoreConnectionError(f"Failed to connect to Qdrant Cloud cluster: {e}")
+
+        if not exists:
+            if self.read_only:
+                raise CollectionNotFoundError(
+                    f"Collection '{self.collection_name}' does not exist on Qdrant Cloud. "
+                    f"Automatic creation is disabled in read-only / deployment mode."
+                )
             self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=VectorParams(size=self.vector_size, distance=Distance.COSINE)
             )
 
     def add(self, ids: List[str], documents: List[str], embeddings: List[List[float]], metadatas: List[Dict[str, Any]]):
+        if self.read_only:
+            raise PermissionError("Cannot add points: Vector store is operating in read-only mode.")
         from qdrant_client.models import PointStruct
         points = []
         for i, doc, emb, meta in zip(ids, documents, embeddings, metadatas):
@@ -213,13 +289,84 @@ class QdrantCollectionWrapper(BaseVectorCollection):
             "distances": all_distances
         }
 
-    def count(self) -> int:
+    def get_status(self) -> Dict[str, Any]:
+        """Return structured, sanitized health status for diagnostic panels."""
+        if self._init_error is not None:
+            if isinstance(self._init_error, CollectionNotFoundError):
+                return {
+                    "status": "collection_missing",
+                    "backend": "qdrant",
+                    "backend_label": "Qdrant Cloud (Managed)",
+                    "collection_name": self.collection_name,
+                    "count": None,
+                    "error": str(self._init_error)
+                }
+            elif isinstance(self._init_error, VectorStoreAuthError):
+                return {
+                    "status": "auth_error",
+                    "backend": "qdrant",
+                    "backend_label": "Qdrant Cloud (Managed)",
+                    "collection_name": self.collection_name,
+                    "count": None,
+                    "error": str(self._init_error)
+                }
+            return {
+                "status": "connection_error",
+                "backend": "qdrant",
+                "backend_label": "Qdrant Cloud (Managed)",
+                "collection_name": self.collection_name,
+                "count": None,
+                "error": str(self._init_error)
+            }
+
         try:
             if not self.client.collection_exists(self.collection_name):
-                return 0
-            return self.client.count(collection_name=self.collection_name, exact=True).count
-        except Exception:
-            return 0
+                return {
+                    "status": "collection_missing",
+                    "backend": "qdrant",
+                    "backend_label": "Qdrant Cloud (Managed)",
+                    "collection_name": self.collection_name,
+                    "count": None,
+                    "error": f"Collection '{self.collection_name}' does not exist on cluster."
+                }
+            cnt = self.client.count(collection_name=self.collection_name, exact=True).count
+            return {
+                "status": "healthy" if cnt > 0 else "empty_confirmed",
+                "backend": "qdrant",
+                "backend_label": "Qdrant Cloud (Managed)",
+                "collection_name": self.collection_name,
+                "count": cnt,
+                "error": None
+            }
+        except Exception as e:
+            err_str = str(e).lower()
+            if "401" in err_str or "403" in err_str or "unauthorized" in err_str or "api-key" in err_str:
+                return {
+                    "status": "auth_error",
+                    "backend": "qdrant",
+                    "backend_label": "Qdrant Cloud (Managed)",
+                    "collection_name": self.collection_name,
+                    "count": None,
+                    "error": "Authentication failed. Check QDRANT_API_KEY in Secrets."
+                }
+            return {
+                "status": "connection_error",
+                "backend": "qdrant",
+                "backend_label": "Qdrant Cloud (Managed)",
+                "collection_name": self.collection_name,
+                "count": None,
+                "error": f"Cluster unreachable: {type(e).__name__}"
+            }
+
+    def count(self) -> int:
+        status = self.get_status()
+        if status["status"] == "auth_error":
+            raise VectorStoreAuthError(status["error"])
+        elif status["status"] == "connection_error":
+            raise VectorStoreConnectionError(status["error"])
+        elif status["status"] == "collection_missing":
+            raise CollectionNotFoundError(status["error"])
+        return status["count"] if status["count"] is not None else 0
 
     def get(self, ids: Optional[List[str]] = None, include: Optional[List[str]] = None) -> Dict[str, Any]:
         with_vectors = "embeddings" in (include or [])
@@ -271,14 +418,19 @@ class VectorStoreFactory:
     def get_collection(
         collection_name: str,
         backend: Optional[str] = None,
-        local_path: Optional[Path] = None
+        local_path: Optional[Path] = None,
+        read_only: Optional[bool] = None
     ) -> BaseVectorCollection:
         """
         Return a wrapped collection instance based on configured backend:
         'local', 'chroma_cloud', or 'qdrant'.
-        If backend is None, defaults to VECTOR_DB_BACKEND environment variable or 'local'.
+        If backend is None, defaults to VECTOR_DB_BACKEND secret/env or 'local'.
+        If read_only is None, defaults to True if APP_MODE in ('read_only', 'hosted', 'production').
         """
         backend = (backend or get_secret("VECTOR_DB_BACKEND", "local")).lower()
+
+        if read_only is None:
+            read_only = get_secret("APP_MODE", "").lower() in ("read_only", "hosted", "production")
 
         if backend == "local":
             import chromadb
@@ -314,9 +466,13 @@ class VectorStoreFactory:
                 url = get_secret("QDRANT_URL")
                 api_key = get_secret("QDRANT_API_KEY")
                 if not url or not api_key:
-                    raise ValueError("QDRANT_URL and QDRANT_API_KEY must be configured.")
+                    raise VectorStoreAuthError("QDRANT_URL and QDRANT_API_KEY must be configured.")
                 client = QdrantClient(url=url, api_key=api_key, timeout=60.0)
-                return QdrantCollectionWrapper(client=client, collection_name=collection_name)
+                return QdrantCollectionWrapper(
+                    client=client,
+                    collection_name=collection_name,
+                    read_only=read_only
+                )
             except ImportError:
                 raise ImportError("qdrant-client not installed. Run 'pip install qdrant-client'")
 
@@ -326,10 +482,15 @@ class VectorStoreFactory:
 
 if __name__ == "__main__":
     print("=" * 70)
-    print("SLLIP V3 - VECTOR STORE ABSTRACTION TEST")
+    print("SLLIP V3 - VECTOR STORE ABSTRACTION HEALTH CHECK")
     print("=" * 70)
     backend = get_secret("VECTOR_DB_BACKEND", "local")
     print(f"Configured backend: {backend}")
-    store = VectorStoreFactory.get_collection("case_law_collection")
-    print(f"Connected to collection: case_law_collection")
-    print(f"Current Vector Count:   {store.count():,}")
+    try:
+        store = VectorStoreFactory.get_collection("case_law_collection")
+        status = store.get_status()
+        print(f"Collection status:  {status['status']}")
+        print(f"Active count:       {status['count']}")
+        print(f"Error (if any):     {status['error']}")
+    except Exception as e:
+        print(f"Exception during store check: {e}")

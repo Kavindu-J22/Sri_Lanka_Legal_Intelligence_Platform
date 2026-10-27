@@ -14,6 +14,8 @@ import torch
 import chromadb
 from sentence_transformers import SentenceTransformer
 from vector_store import VectorStoreFactory
+from hybrid_retriever import BM25Index, reciprocal_rank_fusion
+from supervised_ljp import TrainedLJPInferenceEngine
 
 # Load environment variables from .env
 load_dotenv()
@@ -213,67 +215,85 @@ class HybridLegalRetriever:
             except Exception:
                 self.stat_col = None
 
-    def retrieve_precedents(self, query_text: str, top_k: int = 4) -> List[Dict[str, Any]]:
-        """Retrieve top-k relevant SAC chunks from case_law_collection with deduplication and Family Law keyword boosting."""
+    def retrieve_precedents(self, query_text: str, top_k: int = 4, exclude_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """
+        Retrieve top-k relevant precedents using genuine Dense + BM25 Reciprocal Rank Fusion (RRF).
+        Strictly prevents test-case self-retrieval via exclude_ids.
+        """
         if not self.case_col or self.case_col.count() == 0:
             return []
 
         query_emb = self.model.encode([query_text], show_progress_bar=False).tolist()
-        n_candidates = max(top_k * 6, 25)
+        n_candidates = max(top_k * 8, 30)
         results = self.case_col.query(
             query_embeddings=query_emb,
             n_results=min(n_candidates, self.case_col.count()),
             include=["documents", "metadatas", "distances"]
         )
 
-        candidates = []
+        exclude_set = set(exclude_ids or [])
+        dense_candidates = []
+        bm25_docs = []
+
         if results and results.get("documents"):
             docs = results["documents"][0]
             metas = results["metadatas"][0]
             dists = results["distances"][0]
 
-            for doc, meta, dist in zip(docs, metas, dists):
+            for idx, (doc, meta, dist) in enumerate(zip(docs, metas, dists)):
+                doc_id = meta.get("doc_id", f"doc_{idx}")
+                if doc_id in exclude_set:
+                    continue
+
                 base_sim = 1.0 / (1.0 + dist)
-                doc_text_lower = (doc + " " + meta.get("global_summary", "") + " " + meta.get("keywords", "")).lower()
-
-                # Criminal Exclusion Check
-                is_criminal = any(ck in doc_text_lower for ck in CRIMINAL_EXCLUSION_KEYWORDS)
-
-                # Family Law Keyword Boost
-                fl_match_count = sum(1 for fk in FAMILY_LAW_KEYWORDS if fk in doc_text_lower)
-                boost = 1.0 + (0.05 * min(fl_match_count, 5))
-
-                if is_criminal and fl_match_count == 0:
-                    adjusted_score = base_sim * 0.2
-                else:
-                    adjusted_score = base_sim * boost
-
-                candidates.append({
-                    "doc_id": meta.get("doc_id", "N/A"),
+                dense_candidates.append({
+                    "id": doc_id,
+                    "doc_id": doc_id,
                     "verdict": meta.get("verdict", "N/A"),
                     "global_summary": meta.get("global_summary", "N/A"),
                     "keywords": meta.get("keywords", ""),
                     "text": doc,
-                    "similarity_score": round(adjusted_score, 4),
-                    "raw_sim": round(base_sim, 4),
-                    "is_family_law": fl_match_count > 0
+                    "dense_score": float(base_sim)
                 })
 
-        # Sort by adjusted similarity score descending
-        candidates.sort(key=lambda x: x["similarity_score"], reverse=True)
+                bm25_docs.append({
+                    "id": doc_id,
+                    "text": doc + " " + meta.get("global_summary", "") + " " + meta.get("keywords", ""),
+                    "metadata": meta
+                })
 
-        # Deduplicate by doc_id (unique case per precedent)
-        deduped_precedents = []
-        seen_doc_ids = set()
-        for cand in candidates:
+        if not dense_candidates:
+            return []
+
+        # Fit BM25 on the candidate corpus for genuine sparse rank fusion
+        bm25_index = BM25Index(k1=1.5, b=0.75)
+        bm25_index.fit(bm25_docs, text_field="text", id_field="id")
+        bm25_scored = bm25_index.query(query_text, top_k=len(bm25_docs), exclude_ids=exclude_set)
+
+        bm25_results = [{"id": doc["id"], "score": score} for doc, score in bm25_scored]
+        dense_results = [{"id": d["id"], "score": d["dense_score"]} for d in dense_candidates]
+
+        # Reciprocal Rank Fusion
+        fused_ranks = reciprocal_rank_fusion(dense_results, bm25_results, k=60)
+        fused_score_map = {item["id"]: item["rrf_score"] for item in fused_ranks}
+
+        # Deduplicate and sort by fused RRF score
+        seen_docs = set()
+        final_precedents = []
+        # Sort candidates by fused score
+        dense_candidates.sort(key=lambda x: fused_score_map.get(x["id"], 0.0), reverse=True)
+
+        for cand in dense_candidates:
             d_id = cand["doc_id"]
-            if d_id not in seen_doc_ids:
-                seen_doc_ids.add(d_id)
-                deduped_precedents.append(cand)
-                if len(deduped_precedents) == top_k:
+            if d_id not in seen_docs:
+                seen_docs.add(d_id)
+                cand["similarity_score"] = round(fused_score_map.get(cand["id"], cand["dense_score"]), 4)
+                cand["retrieval_method"] = "Hybrid_Dense_BM25_RRF"
+                final_precedents.append(cand)
+                if len(final_precedents) == top_k:
                     break
 
-        return deduped_precedents
+        return final_precedents
 
     def retrieve_statutes(self, query_text: str, top_k: int = 2) -> List[Dict[str, Any]]:
         """Retrieve top-k relevant statutory sections from statutory_acts_collection with deduplication."""
@@ -489,45 +509,36 @@ class ProsecutorAgent:
 
 
 class JudgeAgent:
-    """Agent 4 (Legal Judgment Prediction & Softmax Classifier): Evaluates debate trace using Atria ASI LLM & Softmax Engine (Max 500 words)."""
+    """Agent 4 (Legal Judgment Prediction & Opinion Synthesis Engine): Uses loaded, trained LJP classifier and Atria ASI LLM."""
 
     def __init__(self, llm_client: UnifiedLLMClient):
         self.llm_client = llm_client
+        self.ljp_engine = TrainedLJPInferenceEngine()
 
     def process(self, context: Dict[str, Any], defense_arg: str, prosecutor_arg: str, status_callback=None) -> Dict[str, Any]:
         case_facts = context["case_facts"]
         precedents = context["precedents"]
 
-        # 1. Calculate Softmax Baseline Probabilities
-        raw_scores = {
-            "Appeal Dismissed": 2.5,
-            "Order Set Aside": 1.8,
-            "Appeal Allowed": 1.5,
-            "Appeal Allowed in Part": 0.8,
-            "Application Dismissed": 0.5,
-            "Judgment Affirmed": 0.4
-        }
-        for prec in precedents:
-            v = prec["verdict"]
-            sim = prec["similarity_score"]
-            if v in raw_scores:
-                raw_scores[v] += sim * 2.0
-
-        facts_lower = case_facts.lower()
-        if "cruelty" in facts_lower or "desertion" in facts_lower or "adultery" in facts_lower:
-            raw_scores["Appeal Allowed"] += 0.8
-            raw_scores["Order Set Aside"] += 0.6
-        if "maintenance" in facts_lower or "alimony" in facts_lower:
-            raw_scores["Appeal Allowed in Part"] += 0.7
-            raw_scores["Appeal Dismissed"] += 0.4
-        if "custody" in facts_lower or "minor" in facts_lower:
-            raw_scores["Order Set Aside"] += 0.9
-
-        max_score = max(raw_scores.values())
-        exp_scores = {k: math.exp(v - max_score) for k, v in raw_scores.items()}
-        sum_exp = sum(exp_scores.values())
-        probabilities = {k: round(exp_scores[k] / sum_exp, 4) for k in raw_scores.keys()}
-        predicted_verdict = max(probabilities.items(), key=lambda x: x[1])[0]
+        # 1. Obtain Predictions from Genuine Trained LJP Pipeline
+        if self.ljp_engine.is_loaded:
+            pred_res = self.ljp_engine.predict(case_facts)
+            probabilities = pred_res["class_probabilities"]
+            predicted_verdict = pred_res["predicted_verdict"]
+            model_info = pred_res["model_name"]
+            is_trained = True
+        else:
+            # Fallback to calibrated prior when artifact is unavailable
+            probabilities = {
+                "Appeal Dismissed": 0.3711,
+                "Appeal Allowed": 0.3470,
+                "Order Set Aside": 0.1537,
+                "Judgment Affirmed": 0.0891,
+                "Application Dismissed": 0.0203,
+                "Appeal Allowed in Part": 0.0188
+            }
+            predicted_verdict = "Appeal Dismissed"
+            model_info = "Baseline Prior (Trained Pipeline Not Loaded)"
+            is_trained = False
 
         # 2. Call Atria ASI LLM for Judicial Opinion Generation
         sys_prompt = (
@@ -569,7 +580,9 @@ class JudgeAgent:
         return {
             "predicted_verdict": predicted_verdict,
             "probabilities": probabilities,
-            "judicial_opinion": llm_opinion
+            "judicial_opinion": llm_opinion,
+            "model_info": model_info,
+            "is_trained_model": is_trained
         }
 
 
@@ -630,6 +643,8 @@ class MultiAgentLJPFramework:
             "predicted_verdict": judge_res["predicted_verdict"],
             "probabilities": judge_res["probabilities"],
             "judicial_opinion": judge_res["judicial_opinion"],
+            "model_info": judge_res.get("model_info", "TF-IDF + Calibrated Logistic Regression (v1.0.0)"),
+            "is_trained_model": judge_res.get("is_trained_model", False),
             "execution_time_sec": elapsed_sec,
             "model_used": context.get("model_used", "Atria-Dawn-Preview")
         }

@@ -1,0 +1,51 @@
+{
+  "version": "3.0.0",
+  "eval_date": "2026-10-27 04:24:30 UTC",
+  "benchmark_query_count": 10,
+  "eval_depth_k": 5,
+  "fusion_algorithm": "Reciprocal Rank Fusion (k=60)",
+  "results_by_method": {
+    "Dense_Semantic": {
+      "precision_at_1": 0.3,
+      "precision_at_3": 0.3,
+      "precision_at_5": 0.34,
+      "recall_at_3": 0.22,
+      "recall_at_5": 0.5,
+      "mean_reciprocal_rank_mrr": 0.3533,
+      "ndcg_at_5": 0.3913,
+      "avg_latency_ms": 557.4
+    },
+    "BM25_Sparse": {
+      "precision_at_1": 0.6,
+      "precision_at_3": 0.5667,
+      "precision_at_5": 0.44,
+      "recall_at_3": 0.495,
+      "recall_at_5": 0.6,
+      "mean_reciprocal_rank_mrr": 0.6,
+      "ndcg_at_5": 0.6,
+      "avg_latency_ms": 8.24
+    },
+    "Hybrid_Dense_BM25_RRF": {
+      "precision_at_1": 0.4,
+      "precision_at_3": 0.4333,
+      "precision_at_5": 0.38,
+      "recall_at_3": 0.38,
+      "recall_at_5": 0.5,
+      "mean_reciprocal_rank_mrr": 0.45,
+      "ndcg_at_5": 0.4631,
+      "avg_latency_ms": 565.84
+    }
+  },
+  "queries_evaluated": [
+    "Q1_MAINTENANCE",
+    "Q2_CUSTODY_BEST_INTERESTS",
+    "Q3_DIVORCE_DESERTION",
+    "Q4_DIVORCE_ADULTERY",
+    "Q5_ALIMONY_PENDENTE_LITE",
+    "Q6_PRESCRIPTION_PROPERTY",
+    "Q7_PARTITION_DECLARATION",
+    "Q8_EX_PARTE_DECREE",
+    "Q9_WRIT_CERTIORARI",
+    "Q10_MONEY_RECOVERY"
+  ]
+}

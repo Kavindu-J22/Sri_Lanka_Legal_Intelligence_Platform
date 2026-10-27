@@ -16,10 +16,12 @@ import numpy as np
 # Workspace paths
 WORKSPACE_DIR = Path(__file__).parent.resolve()
 PROCESSED_DIR = WORKSPACE_DIR / "processed_data"
+ASSETS_DIR = WORKSPACE_DIR / "assets"
 GROUND_TRUTH_FILE = PROCESSED_DIR / "ground_truth.json"
 EXTRACTION_METADATA_FILE = PROCESSED_DIR / "extraction_metadata.json"
 FAMILY_LAW_TXT_DIR = PROCESSED_DIR / "family_law_clean_txt"
 STATUTORY_TXT_DIR = PROCESSED_DIR / "statutory_acts_clean_txt"
+ANALYTICS_MANIFEST_FILE = ASSETS_DIR / "analytics_manifest.json"
 
 # Canonical outcome classes for Sri Lankan appellate family law
 CANONICAL_VERDICTS = [
@@ -45,8 +47,9 @@ CONSOLIDATED_VERDICTS_MAP = {
 class LegalDatasetManager:
     """Manages ground truth legal records, metadata provenance, and evaluation splits."""
 
-    def __init__(self, processed_dir: Path = PROCESSED_DIR):
+    def __init__(self, processed_dir: Path = PROCESSED_DIR, manifest_path: Optional[Path] = None):
         self.processed_dir = processed_dir
+        self.manifest_path = manifest_path or ANALYTICS_MANIFEST_FILE
         self.ground_truth_path = processed_dir / "ground_truth.json"
         self.metadata_path = processed_dir / "extraction_metadata.json"
         self.family_txt_dir = processed_dir / "family_law_clean_txt"
@@ -67,44 +70,100 @@ class LegalDatasetManager:
                 self._metadata = json.load(f)
 
     def get_dataset_statistics(self) -> Dict[str, Any]:
-        """Compute verified dataset counts and breakdown."""
-        total_gt = len(self._raw_ground_truth)
-        verdict_counts: Dict[str, int] = {}
-        for entry in self._raw_ground_truth.values():
-            v = entry.get("verdict", "Undetermined")
-            verdict_counts[v] = verdict_counts.get(v, 0) + 1
+        """
+        Compute verified dataset counts and breakdown.
+        Prioritizes the audited assets/analytics_manifest.json snapshot for cloud deployment.
+        Falls back to local raw files if present; otherwise returns a typed unavailable status.
+        NEVER silently converts missing data to 0.
+        """
+        # 1. Check audited manifest snapshot (Primary for cloud deployments)
+        if self.manifest_path.exists():
+            try:
+                with open(self.manifest_path, "r", encoding="utf-8") as f:
+                    manifest = json.load(f)
+                totals = manifest.get("corpus_totals", {})
+                return {
+                    "snapshot_available": True,
+                    "is_snapshot": True,
+                    "status": "verified_snapshot",
+                    "generated_at_utc": manifest.get("generated_at_utc"),
+                    "schema_version": manifest.get("schema_version"),
+                    "source_checksums": manifest.get("source_checksums", {}),
+                    "provenance": manifest.get("provenance", {}),
+                    "total_extracted_records": totals.get("total_extracted_documents", 0),
+                    "total_family_law_cases": totals.get("total_family_law_cases", 0),
+                    "usable_supervised_cases": totals.get("usable_supervised_cases", 0),
+                    "undetermined_cases": totals.get("undetermined_cases", 0),
+                    "verdict_distribution": manifest.get("verdict_distribution", {}),
+                    "enacted_acts_count": totals.get("enacted_acts_count", 0),
+                    "proposed_bills_count": totals.get("proposed_bills_count", 0),
+                    "appeal_court_cases_scanned": totals.get("appeal_court_cases_scanned", 0),
+                    "supreme_court_cases_scanned": totals.get("supreme_court_cases_scanned", 0)
+                }
+            except Exception as e:
+                pass
 
-        usable_supervised_count = sum(
-            count for verdict, count in verdict_counts.items()
-            if verdict in CANONICAL_VERDICTS
-        )
+        # 2. Compute from local raw files if available
+        if self._raw_ground_truth or self._metadata:
+            total_gt = len(self._raw_ground_truth)
+            verdict_counts: Dict[str, int] = {}
+            for entry in self._raw_ground_truth.values():
+                v = entry.get("verdict", "Undetermined")
+                verdict_counts[v] = verdict_counts.get(v, 0) + 1
 
-        acts_count = 0
-        bills_count = 0
-        appeal_count = 0
-        supreme_count = 0
+            usable_supervised_count = sum(
+                count for verdict, count in verdict_counts.items()
+                if verdict in CANONICAL_VERDICTS
+            )
 
-        for item in self._metadata:
-            rel = item.get("relative_path", "").lower()
-            if "acts" in rel:
-                acts_count += 1
-            elif "bills" in rel:
-                bills_count += 1
-            if "appeal_court" in rel:
-                appeal_count += 1
-            elif "supreme_court" in rel:
-                supreme_count += 1
+            acts_count = 0
+            bills_count = 0
+            appeal_count = 0
+            supreme_count = 0
 
+            for item in self._metadata:
+                rel = item.get("relative_path", "").lower()
+                if "acts" in rel:
+                    acts_count += 1
+                elif "bills" in rel:
+                    bills_count += 1
+                if "appeal_court" in rel:
+                    appeal_count += 1
+                elif "supreme_court" in rel:
+                    supreme_count += 1
+
+            return {
+                "snapshot_available": True,
+                "is_snapshot": False,
+                "status": "computed_from_local_raw",
+                "generated_at_utc": None,
+                "schema_version": "3.0.0",
+                "total_extracted_records": len(self._metadata),
+                "total_family_law_cases": total_gt,
+                "usable_supervised_cases": usable_supervised_count,
+                "undetermined_cases": verdict_counts.get("Undetermined", 0),
+                "verdict_distribution": verdict_counts,
+                "enacted_acts_count": acts_count,
+                "proposed_bills_count": bills_count,
+                "appeal_court_cases_scanned": appeal_count,
+                "supreme_court_cases_scanned": supreme_count
+            }
+
+        # 3. Neither manifest nor raw files exist (Clean checkout or missing assets)
         return {
-            "total_extracted_records": len(self._metadata),
-            "total_family_law_cases": total_gt,
-            "usable_supervised_cases": usable_supervised_count,
-            "undetermined_cases": verdict_counts.get("Undetermined", 0),
-            "verdict_distribution": verdict_counts,
-            "enacted_acts_count": acts_count,
-            "proposed_bills_count": bills_count,
-            "appeal_court_cases_scanned": appeal_count,
-            "supreme_court_cases_scanned": supreme_count
+            "snapshot_available": False,
+            "is_snapshot": False,
+            "status": "unavailable",
+            "error": "Not available: analytics manifest not deployed. Run 'python scripts/build_analytics_manifest.py' on build machine.",
+            "total_extracted_records": None,
+            "total_family_law_cases": None,
+            "usable_supervised_cases": None,
+            "undetermined_cases": None,
+            "verdict_distribution": {},
+            "enacted_acts_count": None,
+            "proposed_bills_count": None,
+            "appeal_court_cases_scanned": None,
+            "supreme_court_cases_scanned": None
         }
 
     def get_labeled_cases(self, consolidate: bool = False) -> List[Dict[str, Any]]:

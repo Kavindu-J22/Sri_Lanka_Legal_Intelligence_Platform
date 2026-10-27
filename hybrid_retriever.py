@@ -112,29 +112,46 @@ class BM25Index:
 
 def reciprocal_rank_fusion(
     dense_results: List[Dict[str, Any]],
-    sparse_results: List[Tuple[Dict[str, Any], float]],
+    sparse_results: Any,
     rrf_k: int = 60,
     dense_weight: float = 1.0,
     sparse_weight: float = 1.0,
-    top_k: int = 5
+    top_k: int = 5,
+    **kwargs
 ) -> List[Dict[str, Any]]:
     """
     Combine dense semantic ranking and BM25 sparse ranking using Reciprocal Rank Fusion (RRF).
     Formula: RRF(d) = (w_dense / (k + rank_dense)) + (w_sparse / (k + rank_sparse))
     """
+    if "k" in kwargs:
+        rrf_k = kwargs["k"]
+
     scores: Dict[str, float] = {}
     doc_map: Dict[str, Dict[str, Any]] = {}
     rank_dense_map: Dict[str, int] = {}
     rank_sparse_map: Dict[str, int] = {}
 
     for rank, doc in enumerate(dense_results, 1):
-        doc_id = doc.get("doc_id") or doc.get("chunk_id") or doc.get("filename", "")
+        doc_id = doc.get("doc_id") or doc.get("chunk_id") or doc.get("id") or doc.get("filename", "")
+        if not doc_id:
+            continue
         doc_map[doc_id] = doc
         rank_dense_map[doc_id] = rank
         scores[doc_id] = scores.get(doc_id, 0.0) + (dense_weight / (rrf_k + rank))
 
-    for rank, (doc, bm25_score) in enumerate(sparse_results, 1):
-        doc_id = doc.get("doc_id") or doc.get("chunk_id") or doc.get("filename", "")
+    # sparse_results can be List[Tuple[Dict, float]] or List[Dict]
+    for rank, item in enumerate(sparse_results, 1):
+        if isinstance(item, tuple) and len(item) == 2:
+            doc, bm25_score = item
+        elif isinstance(item, dict):
+            doc = item
+            bm25_score = float(item.get("score", 0.0))
+        else:
+            continue
+
+        doc_id = doc.get("doc_id") or doc.get("chunk_id") or doc.get("id") or doc.get("filename", "")
+        if not doc_id:
+            continue
         if doc_id not in doc_map:
             doc_map[doc_id] = doc
         rank_sparse_map[doc_id] = rank

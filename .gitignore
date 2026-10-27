@@ -13,6 +13,10 @@ processed_data/*
 # Keep directory structure if needed:
 !processed_data/.gitkeep
 
+# Track production assets and manifests
+!assets/
+!assets/**
+
 # ------------------------------------------------------------------------------
 # 2. Vector Databases & Embeddings (ChromaDB)
 # ------------------------------------------------------------------------------

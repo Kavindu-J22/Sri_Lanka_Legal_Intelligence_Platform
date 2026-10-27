@@ -1,0 +1,58 @@
+{
+  "schema_version": "3.0.0",
+  "manifest_type": "verified_corpus_snapshot",
+  "generated_at_utc": "2026-10-27T03:00:43.550762+00:00",
+  "source_checksums": {
+    "ground_truth_sha256": "f552a013984a7774eb8f8b88d300f38bbf9fcacb19f27762696237bc1fb61db7",
+    "extraction_metadata_sha256": "89eb3b3920fe98aa082b66447194e127403cc73515660cc62301b4e62b7d4ce4"
+  },
+  "provenance": {
+    "jurisdiction": "Sri Lanka",
+    "domain": "Appellate Family Law & Statutory Enactments",
+    "courts": [
+      "Supreme Court of Sri Lanka",
+      "Court of Appeal of Sri Lanka"
+    ],
+    "statutory_corpus": [
+      "Acts of Parliament (1950-2024)",
+      "Proposed Parliament Bills"
+    ]
+  },
+  "corpus_totals": {
+    "total_extracted_documents": 12706,
+    "total_family_law_cases": 1980,
+    "usable_supervised_cases": 1594,
+    "undetermined_cases": 386,
+    "enacted_acts_count": 2587,
+    "proposed_bills_count": 4197,
+    "appeal_court_cases_scanned": 4034,
+    "supreme_court_cases_scanned": 1888
+  },
+  "verdict_distribution": {
+    "Order Set Aside": 440,
+    "Undetermined": 386,
+    "Judgment Affirmed": 142,
+    "Appeal Allowed": 300,
+    "Application Dismissed": 90,
+    "Appeal Dismissed": 592,
+    "Appeal Allowed in Part": 30
+  },
+  "canonical_verdicts": [
+    "Appeal Dismissed",
+    "Order Set Aside",
+    "Appeal Allowed",
+    "Appeal Allowed in Part",
+    "Application Dismissed",
+    "Judgment Affirmed"
+  ],
+  "extraction_methods": {
+    "pymupdf_legacy_converted": 12275,
+    "pymupdf_layout": 431
+  },
+  "quality_audit": {
+    "reconciliation_passed": true,
+    "statutory_distinction_verified": true,
+    "leak_free_split_applicable": true,
+    "label_origin": "Programmatic regex extracted from operative judicial decree conclusions with tail-stripping validation."
+  }
+}

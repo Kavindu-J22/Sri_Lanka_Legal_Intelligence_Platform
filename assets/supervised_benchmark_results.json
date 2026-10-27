@@ -1,0 +1,337 @@
+{
+  "schema_version": "3.0.0",
+  "artifact_type": "verified_supervised_benchmark",
+  "timestamp_utc": "2026-10-27T03:51:32.874487+00:00",
+  "task": "Appellate Family Law Legal Judgment Prediction",
+  "evaluation_protocol": "Stratified 70/10/20 split; post-decision tail text stripped from input to prevent label leakage.",
+  "consolidated_classes": false,
+  "train_sample_count": 1117,
+  "val_sample_count": 159,
+  "test_sample_count": 318,
+  "results": {
+    "majority_class": {
+      "model_name": "Majority Class Baseline",
+      "test_sample_count": 318,
+      "accuracy": 0.3711,
+      "macro_precision": 0.0618,
+      "macro_recall": 0.1667,
+      "macro_f1": 0.0902,
+      "weighted_precision": 0.1377,
+      "weighted_recall": 0.3711,
+      "weighted_f1": 0.2009,
+      "brier_score_loss": 0.2096,
+      "per_class_metrics": {
+        "Appeal Allowed": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 60
+        },
+        "Appeal Allowed in Part": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 6
+        },
+        "Appeal Dismissed": {
+          "precision": 0.3711,
+          "recall": 1.0,
+          "f1_score": 0.5413,
+          "support": 118
+        },
+        "Application Dismissed": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 18
+        },
+        "Judgment Affirmed": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 28
+        },
+        "Order Set Aside": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 88
+        }
+      },
+      "confusion_matrix": [
+        [
+          0,
+          0,
+          60,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          6,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          118,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          18,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          28,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          88,
+          0,
+          0,
+          0
+        ]
+      ],
+      "classes": [
+        "Appeal Allowed",
+        "Appeal Allowed in Part",
+        "Appeal Dismissed",
+        "Application Dismissed",
+        "Judgment Affirmed",
+        "Order Set Aside"
+      ]
+    },
+    "tfidf_calibrated_lr": {
+      "model_name": "TF-IDF + Calibrated Logistic Regression",
+      "test_sample_count": 318,
+      "accuracy": 0.5189,
+      "macro_precision": 0.4934,
+      "macro_recall": 0.3575,
+      "macro_f1": 0.378,
+      "weighted_precision": 0.5206,
+      "weighted_recall": 0.5189,
+      "weighted_f1": 0.4823,
+      "brier_score_loss": 0.1029,
+      "per_class_metrics": {
+        "Appeal Allowed": {
+          "precision": 0.5882,
+          "recall": 0.1667,
+          "f1_score": 0.2597,
+          "support": 60
+        },
+        "Appeal Allowed in Part": {
+          "precision": 0.5,
+          "recall": 0.1667,
+          "f1_score": 0.25,
+          "support": 6
+        },
+        "Appeal Dismissed": {
+          "precision": 0.5287,
+          "recall": 0.7797,
+          "f1_score": 0.6301,
+          "support": 118
+        },
+        "Application Dismissed": {
+          "precision": 0.3333,
+          "recall": 0.1667,
+          "f1_score": 0.2222,
+          "support": 18
+        },
+        "Judgment Affirmed": {
+          "precision": 0.5,
+          "recall": 0.2857,
+          "f1_score": 0.3636,
+          "support": 28
+        },
+        "Order Set Aside": {
+          "precision": 0.51,
+          "recall": 0.5795,
+          "f1_score": 0.5426,
+          "support": 88
+        }
+      },
+      "confusion_matrix": [
+        [
+          10,
+          0,
+          31,
+          2,
+          2,
+          15
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          0,
+          92,
+          2,
+          3,
+          19
+        ],
+        [
+          1,
+          0,
+          9,
+          3,
+          1,
+          4
+        ],
+        [
+          2,
+          0,
+          7,
+          0,
+          8,
+          11
+        ],
+        [
+          1,
+          1,
+          33,
+          1,
+          1,
+          51
+        ]
+      ],
+      "classes": [
+        "Appeal Allowed",
+        "Appeal Allowed in Part",
+        "Appeal Dismissed",
+        "Application Dismissed",
+        "Judgment Affirmed",
+        "Order Set Aside"
+      ]
+    },
+    "dense_embedding_classifier": {
+      "model_name": "Dense Embedding (MiniLM) + Calibrated Classifier",
+      "test_sample_count": 318,
+      "accuracy": 0.4214,
+      "macro_precision": 0.1493,
+      "macro_recall": 0.2071,
+      "macro_f1": 0.1657,
+      "weighted_precision": 0.2859,
+      "weighted_recall": 0.4214,
+      "weighted_f1": 0.3262,
+      "brier_score_loss": 0.1185,
+      "per_class_metrics": {
+        "Appeal Allowed": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 60
+        },
+        "Appeal Allowed in Part": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 6
+        },
+        "Appeal Dismissed": {
+          "precision": 0.4025,
+          "recall": 0.822,
+          "f1_score": 0.5404,
+          "support": 118
+        },
+        "Application Dismissed": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 18
+        },
+        "Judgment Affirmed": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "support": 28
+        },
+        "Order Set Aside": {
+          "precision": 0.4933,
+          "recall": 0.4205,
+          "f1_score": 0.454,
+          "support": 88
+        }
+      },
+      "confusion_matrix": [
+        [
+          0,
+          0,
+          51,
+          0,
+          0,
+          9
+        ],
+        [
+          0,
+          0,
+          5,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          97,
+          0,
+          0,
+          21
+        ],
+        [
+          0,
+          0,
+          14,
+          0,
+          0,
+          4
+        ],
+        [
+          0,
+          0,
+          24,
+          0,
+          0,
+          4
+        ],
+        [
+          0,
+          0,
+          50,
+          1,
+          0,
+          37
+        ]
+      ],
+      "classes": [
+        "Appeal Allowed",
+        "Appeal Allowed in Part",
+        "Appeal Dismissed",
+        "Application Dismissed",
+        "Judgment Affirmed",
+        "Order Set Aside"
+      ]
+    }
+  }
+}

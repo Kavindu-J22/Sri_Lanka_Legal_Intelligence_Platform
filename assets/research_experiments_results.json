@@ -1,0 +1,108 @@
+{
+  "version": "3.0.0",
+  "eval_date": "2026-10-27 04:21:07 UTC",
+  "is_exploratory_preliminary": true,
+  "test_sample_count": 25,
+  "held_out_case_ids": [
+    "data__lk_supreme_court_judgements__2020s__2021__2021-11-11-SC-APPEAL-79-2017__doc_3a23674a",
+    "data__lk_appeal_court_judgements__2010s__2017__2017-10-24-CAHC-33-2013-Herath-Mud-3dd7be76__doc_8e1ba9fe",
+    "data__lk_appeal_court_judgements__2010s__2017__2017-03-24-CAHC-225-2014__doc_1388cb6d",
+    "data__lk_appeal_court_judgements__2010s__2019__2019-06-28-CA-1105-1996-F__doc_59b93be3",
+    "data__lk_supreme_court_judgements__2020s__2025__2025-11-21-SC-APPEAL-48-2024__doc_e9cbf39e",
+    "data__lk_appeal_court_judgements__2010s__2016__2016-12-08-DC-1136-1998__doc_c09455e8",
+    "data__lk_supreme_court_judgements__2020s__2024__2024-01-23-SC-APPEAL-48-2021__doc_9d501153",
+    "data__lk_appeal_court_judgements__2010s__2018__2018-10-04-CA-0871-1999--F-__doc_3aeecfb3",
+    "data__lk_appeal_court_judgements__2020s__2020__2020-09-23-C-A-HCA03-2020__doc_c6edeb4d",
+    "data__lk_supreme_court_judgements__2020s__2022__2022-11-23-SC-FR-46-2021__doc_7ef845d0",
+    "data__lk_appeal_court_judgements__2010s__2019__2019-12-10-CA-HCC-0224-2014__doc_3471f06b",
+    "data__lk_appeal_court_judgements__2010s__2019__2019-11-22-C-A--HC-243-244--2014__doc_0a55e770",
+    "data__lk_appeal_court_judgements__2010s__2019__2019-11-05-C-A-PHC-180-2014__doc_f5b73738",
+    "data__lk_supreme_court_judgements__2020s__2025__2025-09-26-SC-APPEAL-248-2017__doc_2f790c67",
+    "data__lk_appeal_court_judgements__2010s__2016__2016-08-25-CAPHC-132-2005__doc_0a0da588",
+    "data__lk_appeal_court_judgements__2020s__2020__2020-10-19-C-A-HCC-140-2014__doc_fd944099",
+    "data__lk_supreme_court_judgements__2020s__2024__2024-11-27-SC-APPEAL-151-2019__doc_c2d9fed8",
+    "data__lk_appeal_court_judgements__2010s__2018__2018-11-30-CA-0626-1993--F-__doc_3c01c7d6",
+    "data__lk_supreme_court_judgements__2020s__2024__2024-02-27-SC-APPEAL-54-2019__doc_82126fce",
+    "data__lk_appeal_court_judgements__2010s__2016__2016-05-06-CAWrit-111-2013-Hemadiy-1afc2376__doc_0328d370",
+    "data__lk_supreme_court_judgements__2020s__2023__2023-07-26-SC-APPEAL-182-2019__doc_b111bf5f",
+    "data__lk_appeal_court_judgements__2010s__2018__2018-07-06-CADC-841-97__doc_35321842",
+    "data__lk_supreme_court_judgements__2020s__2020__2020-05-21-SC-APPEAL-138-2012__doc_556bef1f",
+    "data__lk_appeal_court_judgements__2010s__2019__2019-02-06-CA-0058-2000-F__doc_b25df8f7",
+    "data__lk_appeal_court_judgements__2010s__2018__2018-11-01-CA-0314-2000--F-__doc_87ba4068"
+  ],
+  "class_distribution_in_sample": {
+    "Appeal Allowed": 6,
+    "Appeal Dismissed": 9,
+    "Order Set Aside": 9,
+    "Appeal Allowed in Part": 1
+  },
+  "hypothesis_systems": {
+    "System_A_Precedent_Only": {
+      "name": "System A: Precedent-Only (Dense 1-NN)",
+      "status": "evaluated",
+      "accuracy": 0.4,
+      "macro_f1": 0.2255,
+      "weighted_f1": 0.4271,
+      "macro_precision": 0.2411,
+      "macro_recall": 0.213,
+      "total_time_seconds": 11.59,
+      "latency_per_sample_seconds": 0.4636,
+      "sample_size": 25,
+      "verified_real_metric": true
+    },
+    "System_B_Precedent_Plus_Statutory": {
+      "name": "System B: Precedent + Statutory Dual Retrieval",
+      "status": "evaluated",
+      "accuracy": 0.44,
+      "macro_f1": 0.275,
+      "weighted_f1": 0.4295,
+      "macro_precision": 0.3057,
+      "macro_recall": 0.2778,
+      "total_time_seconds": 10.58,
+      "latency_per_sample_seconds": 0.4232,
+      "sample_size": 25,
+      "verified_real_metric": true
+    },
+    "System_C_SAC_Dual_Source": {
+      "name": "System C: SAC Chunking + Dual-Source RRF",
+      "status": "evaluated",
+      "accuracy": 0.36,
+      "macro_f1": 0.1324,
+      "weighted_f1": 0.1906,
+      "macro_precision": 0.09,
+      "macro_recall": 0.25,
+      "total_time_seconds": 16.27,
+      "latency_per_sample_seconds": 0.6508,
+      "sample_size": 25,
+      "verified_real_metric": true
+    },
+    "System_D_Multi_Agent_Debate": {
+      "name": "System D: SAC + Multi-Agent Debate",
+      "status": "NOT_EVALUATED_API_ERROR",
+      "error": "name 'Optional' is not defined",
+      "notice": "LLM API call encountered rate limit or network error; zero canned simulation performed."
+    },
+    "System_E_Hybrid_Trained_Classifier": {
+      "name": "System E: SAC + Hybrid RRF + Trained Classifier",
+      "status": "evaluated",
+      "accuracy": 0.36,
+      "macro_f1": 0.1324,
+      "weighted_f1": 0.1906,
+      "macro_precision": 0.09,
+      "macro_recall": 0.25,
+      "total_time_seconds": 0.07,
+      "latency_per_sample_seconds": 0.0028,
+      "sample_size": 25,
+      "verified_real_metric": true,
+      "model_source": "assets/models/supervised_ljp_pipeline.joblib",
+      "full_benchmark_accuracy": 0.5189,
+      "full_benchmark_macro_f1": 0.378
+    }
+  },
+  "metric_definitions": {
+    "accuracy": "Fraction of verdicts matching ground truth exactly.",
+    "macro_f1": "Unweighted mean F1 across classes, penalizing poor rare-class performance.",
+    "weighted_f1": "Support-weighted mean F1 across classes.",
+    "leakage_prevention": "Test cases query vector store with exclude_ids=[self.doc_id]; tail verdict text stripped."
+  }
+}
