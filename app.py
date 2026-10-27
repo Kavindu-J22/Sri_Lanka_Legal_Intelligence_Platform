@@ -151,8 +151,23 @@ st.markdown("""
         border: 1px solid #334155;
         border-radius: 8px;
         padding: 12px 16px;
-        font-size: 0.85rem;
+        font-size: 0.88rem;
         margin-bottom: 12px;
+        color: #FFFFFF !important;
+        line-height: 1.6;
+    }
+    
+    .status-panel, 
+    .status-panel *, 
+    [data-testid="stSidebar"] .status-panel, 
+    [data-testid="stSidebar"] .status-panel * {
+        color: #FFFFFF !important;
+    }
+    
+    .status-panel strong, 
+    [data-testid="stSidebar"] .status-panel strong {
+        color: #FFFFFF !important;
+        font-weight: 700;
     }
     
     .disclaimer-banner {
@@ -284,12 +299,12 @@ except Exception as e:
 health_badge = "🟢 Healthy (Live)" if is_healthy else "🟡 Degraded / Connecting"
 
 st.sidebar.markdown(f"""
-<div class="status-panel">
-    <strong>Vector Provider:</strong> {backend_label}<br>
-    <strong>Connection Status:</strong> {health_badge}<br>
-    <strong>Case Law Vectors:</strong> {c_count:,}<br>
-    <strong>Statutory Vectors:</strong> {s_count:,}<br>
-    <strong>Total Indexed:</strong> {c_count + s_count:,}
+<div class="status-panel" style="background-color: #1E293B; color: #FFFFFF !important; border: 1px solid #334155; border-radius: 8px; padding: 12px 16px; font-size: 0.88rem; line-height: 1.6; margin-bottom: 12px;">
+    <strong style="color: #FFFFFF !important;">Vector Provider:</strong> <span style="color: #FFFFFF !important;">{backend_label}</span><br>
+    <strong style="color: #FFFFFF !important;">Connection Status:</strong> <span style="color: #FFFFFF !important;">{health_badge}</span><br>
+    <strong style="color: #FFFFFF !important;">Case Law Vectors:</strong> <span style="color: #FFFFFF !important;">{c_count:,}</span><br>
+    <strong style="color: #FFFFFF !important;">Statutory Vectors:</strong> <span style="color: #FFFFFF !important;">{s_count:,}</span><br>
+    <strong style="color: #FFFFFF !important;">Total Indexed:</strong> <span style="color: #FFFFFF !important;">{c_count + s_count:,}</span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -298,11 +313,11 @@ manifest_data = load_dataset_stats()
 snap_version = manifest_data.get("manifest_version", "3.0.0")
 snap_stamp = manifest_data.get("generated_at_utc", "2026-10-27 UTC")
 st.sidebar.markdown(f"""
-<div class="status-panel">
-    <strong>Corpus Snapshot:</strong> v{snap_version}<br>
-    <strong>Verified Records:</strong> 12,706 extractions<br>
-    <strong>Enacted Acts:</strong> 2,587 | <strong>Bills:</strong> 4,197<br>
-    <strong>Integrity:</strong> SHA-256 Verified
+<div class="status-panel" style="background-color: #1E293B; color: #FFFFFF !important; border: 1px solid #334155; border-radius: 8px; padding: 12px 16px; font-size: 0.88rem; line-height: 1.6; margin-bottom: 12px;">
+    <strong style="color: #FFFFFF !important;">Corpus Snapshot:</strong> <span style="color: #FFFFFF !important;">v{snap_version}</span><br>
+    <strong style="color: #FFFFFF !important;">Verified Records:</strong> <span style="color: #FFFFFF !important;">12,706 extractions</span><br>
+    <strong style="color: #FFFFFF !important;">Enacted Acts:</strong> <span style="color: #FFFFFF !important;">2,587</span> | <strong style="color: #FFFFFF !important;">Bills:</strong> <span style="color: #FFFFFF !important;">4,197</span><br>
+    <strong style="color: #FFFFFF !important;">Integrity:</strong> <span style="color: #FFFFFF !important;">SHA-256 Verified</span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -310,12 +325,12 @@ st.sidebar.markdown(f"""
 engine = load_inference_engine()
 engine_status = "Active (Trained Pipeline)" if engine.is_loaded else "Heuristic Fallback"
 st.sidebar.markdown(f"""
-<div class="status-panel">
-    <strong>Supervised LJP Engine:</strong><br>
-    {engine.model_name}<br>
-    <strong>Engine Status:</strong> {engine_status}<br>
-    <strong>Held-Out Accuracy:</strong> {engine.held_out_accuracy * 100:.2f}%<br>
-    <strong>Held-Out Macro F1:</strong> {engine.held_out_macro_f1 * 100:.2f}%
+<div class="status-panel" style="background-color: #1E293B; color: #FFFFFF !important; border: 1px solid #334155; border-radius: 8px; padding: 12px 16px; font-size: 0.88rem; line-height: 1.6; margin-bottom: 12px;">
+    <strong style="color: #FFFFFF !important;">Supervised LJP Engine:</strong><br>
+    <span style="color: #FFFFFF !important;">{engine.model_name}</span><br>
+    <strong style="color: #FFFFFF !important;">Engine Status:</strong> <span style="color: #FFFFFF !important;">{engine_status}</span><br>
+    <strong style="color: #FFFFFF !important;">Held-Out Accuracy:</strong> <span style="color: #FFFFFF !important;">{engine.held_out_accuracy * 100:.2f}%</span><br>
+    <strong style="color: #FFFFFF !important;">Held-Out Macro F1:</strong> <span style="color: #FFFFFF !important;">{engine.held_out_macro_f1 * 100:.2f}%</span>
 </div>
 """, unsafe_allow_html=True)
 
