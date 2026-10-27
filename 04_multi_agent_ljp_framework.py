@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 import torch
 import chromadb
 from sentence_transformers import SentenceTransformer
+from vector_store import VectorStoreFactory
 
 # Load environment variables from .env
 load_dotenv()
@@ -62,9 +63,9 @@ class AtriaLLMClient:
     """Atria ASI LLM Client wrapper for Multi-Agent Legal Reasoning (Model: Atria-Dawn-Preview)."""
 
     def __init__(self, api_key: str = None, base_url: str = None, model_id: str = None):
-        self.api_key = api_key or os.getenv("ATRIA_API_KEY", "atr_g5EXTQeJHPqjXM49A_apd_7UA2bGwT6h").strip()
-        self.base_url = base_url or os.getenv("ATRIA_BASE_URL", "https://api.atria-asi.ai/v1").strip()
-        self.model = model_id or os.getenv("ATRIA_MODEL_ID", "Atria-Dawn-Preview").strip()
+        self.api_key = (api_key or os.getenv("ATRIA_API_KEY", "")).strip()
+        self.base_url = (base_url or os.getenv("ATRIA_BASE_URL", "https://api.atria-asi.ai/v1")).strip()
+        self.model = (model_id or os.getenv("ATRIA_MODEL_ID", "Atria-Dawn-Preview")).strip()
         self.client = None
         if self.api_key:
             try:
@@ -72,6 +73,8 @@ class AtriaLLMClient:
                 self.client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=60.0)
             except Exception as e:
                 print(f"[Atria Client Notice]: OpenAI SDK init info: {e}")
+        else:
+            print("[Security Notice]: No ATRIA_API_KEY configured. System will use deterministic local simulation engine.")
 
     def generate(self, prompt: str, system_prompt: str, max_tokens: int = 4000, temperature: float = 0.3, status_callback=None) -> str:
         """Call Atria ASI API for LLM generation; handles rate limits with automatic retries (up to 5 attempts) and strictly prevents scratchpad leaks."""
@@ -189,18 +192,26 @@ class HybridLegalRetriever:
 
     def __init__(self, vector_db_path: Path):
         self.vector_db_path = vector_db_path
-        self.client = chromadb.PersistentClient(path=str(vector_db_path))
         self.model = SentenceTransformer(EMBEDDING_MODEL_NAME)
         
         try:
-            self.case_col = self.client.get_collection("case_law_collection")
+            self.case_col = VectorStoreFactory.get_collection("case_law_collection")
         except Exception:
-            self.case_col = None
+            try:
+                self.client = chromadb.PersistentClient(path=str(vector_db_path))
+                self.case_col = self.client.get_collection("case_law_collection")
+            except Exception:
+                self.case_col = None
 
         try:
-            self.stat_col = self.client.get_collection("statutory_acts_collection")
+            self.stat_col = VectorStoreFactory.get_collection("statutory_acts_collection")
         except Exception:
-            self.stat_col = None
+            try:
+                if not hasattr(self, "client"):
+                    self.client = chromadb.PersistentClient(path=str(vector_db_path))
+                self.stat_col = self.client.get_collection("statutory_acts_collection")
+            except Exception:
+                self.stat_col = None
 
     def retrieve_precedents(self, query_text: str, top_k: int = 4) -> List[Dict[str, Any]]:
         """Retrieve top-k relevant SAC chunks from case_law_collection with deduplication and Family Law keyword boosting."""
@@ -664,23 +675,30 @@ def evaluate_framework(framework: MultiAgentLJPFramework, test_count: int = 20) 
         y_true.append(actual_verdict)
         y_pred.append(pred_verdict)
 
-    correct = sum(1 for t, p in zip(y_true, y_pred) if t == p)
-    acc = round(correct / len(y_true), 4) if y_true else 0.0
+    from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+    acc = round(float(accuracy_score(y_true, y_pred)), 4) if y_true else 0.0
+    macro_p, macro_r, macro_f1, _ = precision_recall_fscore_support(y_true, y_pred, average="macro", zero_division=0)
+    weighted_p, weighted_r, weighted_f1, _ = precision_recall_fscore_support(y_true, y_pred, average="weighted", zero_division=0)
 
     metrics = {
+        "evaluation_timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "total_test_cases_evaluated": len(y_true),
         "classification_metrics": {
             "accuracy": acc,
-            "macro_precision": 0.6133,
-            "macro_recall": 0.6133,
-            "macro_f1_score": 0.6133
+            "macro_precision": round(float(macro_p), 4),
+            "macro_recall": round(float(macro_r), 4),
+            "macro_f1_score": round(float(macro_f1), 4),
+            "weighted_precision": round(float(weighted_p), 4),
+            "weighted_recall": round(float(weighted_r), 4),
+            "weighted_f1_score": round(float(weighted_f1), 4)
         },
         "ragas_metrics": {
-            "faithfulness_score": 0.7495,
-            "context_relevance_score": 0.7731
+            "status": "Not Evaluated",
+            "reason": "RAGAS evaluation requires configured judge LLM and reference answers."
         },
         "sample_evaluations": [
-            {"doc_id": y_true_item, "actual_verdict": t, "predicted_verdict": p, "matched": t == p}
-            for y_true_item, t, p in zip([s["doc_id"] for s in sample_items[:5]], y_true[:5], y_pred[:5])
+            {"doc_id": s["doc_id"], "actual_verdict": t, "predicted_verdict": p, "matched": t == p}
+            for s, t, p in zip(sample_items[:10], y_true[:10], y_pred[:10])
         ]
     }
 

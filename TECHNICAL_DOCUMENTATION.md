@@ -478,48 +478,75 @@ f:\New NIBM Reserch 2026\Sri_Lanka_Legal_Intelligence_Platform\
 - **Key Functions**:
   - `convert_legacy_sinhala_fonts(text: str) -> str`: Iterates over `SINHALA_LEGACY_MAP` to replace non-Unicode glyphs with Unicode characters.
   - `calculate_garbage_ratio(text: str) -> float`: Computes ANSI corruption density.
-  - `extract_text_from_pdf(filepath: Path) -> (str, str)`: 3-tier cascade (PyMuPDF block layout $\rightarrow$ pdfplumber $\rightarrow$ pytesseract OCR).
+  - `extract_text_from_pdf(filepath: Path) -> (str, str)`: 3-tier cascade (PyMuPDF block layout -> pdfplumber -> pytesseract OCR).
   - `clean_structural_noise(text: str) -> str`: RegEx elimination of court titles, page numbers, stamps, and printer notices.
-  - `extract_verdict(text: str) -> (str, str)`: Scans the final 2,500 characters against trilingual verdict patterns.
-  - `process_pdf_task(task_args) -> dict`: Worker function executed in parallel across CPU cores.
-  - `main()`: Orchestrates SHA-256 deduplication and multiprocessing pool execution.
+  - `extract_verdict(text: str) -> (str, str)`: Programmatic regex extraction on document footers.
+  - `process_pdf_task(task_args) -> dict`: Multiprocessing worker function.
 
-### 9.3 [02_summary_augmented_chunker.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/02_summary_augmented_chunker.py)
-- **Role**: Step 2 Summary-Augmented Chunking engine.
-- **Key Functions**:
-  - `generate_150_word_summary(text: str, verdict: str) -> str`: Synthesizes first 100 words, verdict tag, and last 50 words into an anchor summary.
-  - `chunk_text_by_words(text: str, chunk_size=350, overlap=50) -> list[str]`: Sliding window word chunker.
-  - `process_doc_sac(task_args) -> list[dict]`: Augments each chunk by prepending `[DOCUMENT GLOBAL SUMMARY]`.
-  - `main()`: Parallel execution across Family Law clean text documents.
+### 9.3 [dataset_loader.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/dataset_loader.py)
+- **Role**: Dataset engineering, metadata provenance, and leak-free split generation.
+- **Key Capabilities**:
+  - Distinguishes 2,587 Enacted Acts from 4,197 Proposed Bills.
+  - Partitions 1,594 usable labeled Family Law cases from 386 `Undetermined` cases.
+  - Provides stratified, leak-free train/val/test split generation with post-decision tail stripping.
 
-### 9.4 [03_vector_db_ingestion.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/03_vector_db_ingestion.py)
-- **Role**: Step 3 Vector embedding and ingestion.
-- **Key Functions**:
-  - `add_batch_resilient(collection, ids, documents, embeddings, metadatas)`: Resilient insertion with micro-batch fallback on SQLite locks.
-  - `chunk_text_simple(text, chunk_words=350, overlap_words=50)`: Splits statutory acts into chunks.
-  - `main()`: Connects to ChromaDB, initializes `SentenceTransformer('all-MiniLM-L6-v2')`, populates `case_law_collection` and `statutory_acts_collection`.
+### 9.4 [chunking_engine.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/chunking_engine.py)
+- **Role**: Token-Aware Summary-Augmented Chunking (SAC) Engine.
+- **Key Innovation**:
+  - Solves the 100% token truncation defect of SLLIP V2.
+  - Generates compact non-leaking global case summaries ($\le 60$ tokens) + body chunks ($\le 160$ tokens).
+  - Total augmented tokens guaranteed $\le 240$ tokens (strictly within `all-MiniLM-L6-v2` 256-token limit).
 
-### 9.5 [04_multi_agent_ljp_framework.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/04_multi_agent_ljp_framework.py)
-- **Role**: Step 4 Multi-agent debate and LJP engine.
+### 9.5 [hybrid_retriever.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/hybrid_retriever.py)
+- **Role**: Dense + Sparse Hybrid Retrieval with Reciprocal Rank Fusion (RRF).
+- **Key Capabilities**:
+  - Pure-Python BM25Okapi sparse lexical matcher.
+  - Reciprocal Rank Fusion ($k=60$) fusing dense embeddings and sparse keyword scores.
+  - Test-case ID exclusion parameter preventing test cases from retrieving themselves.
+
+### 9.6 [supervised_ljp.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/supervised_ljp.py)
+- **Role**: Trainable Supervised LJP Classifiers.
+- **Key Models**:
+  - Baseline 0: Majority Class Classifier.
+  - Baseline 1: TF-IDF + Calibrated Logistic Regression (Platt scaling on validation set).
+  - Baseline 2: Dense Embedding Classifier (`all-MiniLM-L6-v2` + Logistic Regression).
+  - Computes verified scikit-learn metrics with post-decision tail text strictly stripped.
+
+### 9.7 [vector_store.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/vector_store.py)
+- **Role**: Vector database storage abstraction.
+- **Key Implementations**:
+  - `BaseVectorCollection` interface.
+  - `LocalChromaCollectionWrapper` (local development).
+  - `VectorStoreFactory` supporting local ChromaDB, Chroma Cloud, and Qdrant Cloud via environment variables.
+
+### 9.8 [migrate_vector_db.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/migrate_vector_db.py)
+- **Role**: Idempotent, resumable migration utility.
+- **Key Features**:
+  - Pre-migration vector dimension validation (384-dim).
+  - Batch-wise pagination reading from local ChromaDB.
+  - Non-destructive upsert to target cloud collection skipping already-migrated IDs.
+
+### 9.9 [research_experiments.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/research_experiments.py)
+- **Role**: Controlled research hypothesis testing across Systems A through E.
+- **Key Features**:
+  - Evaluates Systems A (precedent-only), B (precedent + statutory), C (SAC dual-source), D (SAC multi-agent), and E (SAC hybrid + trained classifier) on identical held-out test splits.
+
+### 9.10 [04_multi_agent_ljp_framework.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/04_multi_agent_ljp_framework.py)
+- **Role**: 4-Agent Adversarial Debate Pipeline & Heuristic Baseline.
 - **Key Classes**:
-  - `AtriaLLMClient`: Wrapper around OpenAI client configured for Atria ASI (`Atria-Dawn-Preview`), featuring 5-stage exponential retry backoff and prompt sanitization.
-  - `HybridLegalRetriever`: Dense retriever with domain keyword boosting and criminal exclusion logic.
-  - `InvestigatorAgent`: Generates objective Fact Sheet (max 500 words).
-  - `DefenseAgent`: Generates Appellant brief (max 300 words).
-  - `ProsecutorAgent`: Generates Respondent rebuttal brief (max 300 words).
-  - `JudgeAgent`: Computes Softmax probabilities over logits and issues final decree (max 500 words).
-  - `MultiAgentLJPFramework`: Orchestrator executing the 4-agent pipeline.
-  - `evaluate_framework(...)`: Benchmark script calculating accuracy, macro F1, and RAGAS scores.
+  - `AtriaLLMClient`: Secure API client (no hardcoded keys) with exponential retry backoff.
+  - `InvestigatorAgent`: Structured Legal Fact Sheet ($\le 500$ words).
+  - `DefenseAgent`: Appellant Legal Brief ($\le 300$ words).
+  - `ProsecutorAgent`: Respondent Rebuttal Brief ($\le 300$ words).
+  - `JudgeAgent`: Heuristic baseline probability distribution + Decision-support Ratio Decidendi.
 
-### 9.6 [app.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/app.py)
-- **Role**: Frontend presentation and interaction layer.
-- **Key Components**:
-  - Page configuration and custom CSS injection (`st.markdown`).
-  - Cached loaders: `@st.cache_resource` for `MultiAgentLJPFramework` and `@st.cache_data` for JSON files.
-  - Sidebar with presets and architectural summaries.
-  - Tab 1: Live execution progress, metric cards, sub-tabs for debate analysis, and Plotly horizontal probability chart.
-  - Tab 2: Live corpus metrics, donut chart of ground truth verdicts, and collection volume comparisons.
-  - Tab 3: Performance metrics display (Accuracy, F1, Faithfulness, Relevance) and sample evaluation table.
+### 9.11 [app.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/app.py)
+- **Role**: Streamlit Executive Legal Tech Web Application.
+- **Key Upgrades**:
+  - Legal decision-support disclaimer banner.
+  - PDF case upload with interactive factual review stage.
+  - Dynamic live metrics queried from ground truth and vector stores.
+  - Real scikit-learn benchmark visualization in Tab 3.
 
 ---
 
@@ -529,53 +556,122 @@ f:\New NIBM Reserch 2026\Sri_Lanka_Legal_Intelligence_Platform\
 
 | ID | Functional Requirement | Implementation Mechanism in Code | Validation / Output |
 | :--- | :--- | :--- | :--- |
-| **FR-01** | Trilingual Legal PDF Ingestion & Normalization | [01_advanced_pdf_processor.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/01_advanced_pdf_processor.py): `convert_legacy_sinhala_fonts()`, `calculate_garbage_ratio()`, `extract_text_from_pdf()`. | 12,275 legacy non-Unicode PDFs transliterated to clean Unicode Sinhala. |
-| **FR-02** | Legal Corpus Deduplication | [01_advanced_pdf_processor.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/01_advanced_pdf_processor.py): 64KB block-wise SHA-256 hash tracking across all PDFs. | Duplicate court filings eliminated without data loss. |
-| **FR-03** | Automated Verdict Extraction & Ground Truth Labelling | [01_advanced_pdf_processor.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/01_advanced_pdf_processor.py): Regex matching across final 2,500 characters against 6 canonical outcomes. | 1,980 Family Law cases labeled in `ground_truth.json`. |
-| **FR-04** | Summary-Augmented Chunking (SAC) | [02_summary_augmented_chunker.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/02_summary_augmented_chunker.py): 150-word global summary prepended to each 350-word chunk. | 28,194 SAC chunks generated in `sac_chunks.json`. |
-| **FR-05** | Dual-Collection Vector Search with Domain Isolation | [03_vector_db_ingestion.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/03_vector_db_ingestion.py) & [04_multi_agent_ljp_framework.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/04_multi_agent_ljp_framework.py): ChromaDB collections with keyword boosting and criminal exclusion. | 102,779 vectors queried; criminal cases filtered out. |
-| **FR-06** | Multi-Agent Adversarial Legal Debate | [04_multi_agent_ljp_framework.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/04_multi_agent_ljp_framework.py): Investigator, Defense Counsel, and Prosecutor agents collaborating sequentially. | Structured debate trace with clear legal briefs. |
-| **FR-07** | Calibrated Legal Judgment Prediction (LJP) | [04_multi_agent_ljp_framework.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/04_multi_agent_ljp_framework.py): `JudgeAgent` calculating Softmax probabilities across 6 canonical verdicts. | Probability distribution + predicted verdict badge in UI. |
-| **FR-08** | Interactive Legal Intelligence Dashboard | [app.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/app.py): Streamlit dashboard with preset loaders, status updates, Plotly charts, and metrics tabs. | Real-time interactive UI for legal practitioners. |
+| **FR-01** | Trilingual Legal PDF Ingestion & Normalization | [01_advanced_pdf_processor.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/01_advanced_pdf_processor.py): Layout PyMuPDF + pdfplumber + OCR + `SINHALA_LEGACY_MAP` | 12,275 legacy non-Unicode PDFs transliterated to clean Unicode Sinhala. |
+| **FR-02** | Legal Corpus Deduplication | [01_advanced_pdf_processor.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/01_advanced_pdf_processor.py): SHA-256 byte streaming | Duplicate court filings eliminated without data loss. |
+| **FR-03** | Ground Truth & Enacted vs. Bill Partitioning | [dataset_loader.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/dataset_loader.py): `LegalDatasetManager` | 1,594 usable labeled cases isolated from 386 undetermined; 2,587 Acts separated from 4,197 Bills. |
+| **FR-04** | Token-Aware SAC Chunking | [chunking_engine.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/chunking_engine.py): `TokenAwareSACChunker` | Chunks guaranteed $\le 240$ tokens (strictly within 256 limit; 0% truncation). |
+| **FR-05** | Hybrid Dense-Sparse Precedent Retrieval | [hybrid_retriever.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/hybrid_retriever.py): BM25Okapi + Dense Cosine + RRF ($k=60$) | RRF fused ranking with test-case exclusion preventing label leakage. |
+| **FR-06** | Multi-Agent Adversarial Legal Debate | [04_multi_agent_ljp_framework.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/04_multi_agent_ljp_framework.py): Investigator, Defense, Prosecutor, Judge | Structured adversarial briefs with simulated decision-support decrees. |
+| **FR-07** | Trainable Supervised LJP Classifiers | [supervised_ljp.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/supervised_ljp.py): Supervised pipelines with scikit-learn | TF-IDF + Calibrated LR achieves **51.89%** accuracy on 318 held-out test cases. |
+| **FR-08** | Interactive Legal Intelligence Dashboard | [app.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/app.py): 3-tab Streamlit dashboard with PDF review | Real-time interactive UI with verified live analytics and legal disclaimers. |
 
 ---
 
 ### 10.2 Non-Functional Requirements (NFR) Performance
 
 - **NFR-01: Performance & Latency**: Embedding and retrieval execute in `< 1.2` seconds; full 4-agent LLM reasoning pipeline completes within 15–25 seconds.
-- **NFR-02: Scalability**: Persistent vector database scales to hundreds of thousands of vectors using HNSW indexing with $O(\log N)$ retrieval complexity.
+- **NFR-02: Scalability**: Persistent vector database scales to hundreds of thousands of vectors with cloud abstraction supporting Chroma Cloud and Qdrant Cloud.
 - **NFR-03: Fault Tolerance & Resilience**:
   - ChromaDB insertion resilience via micro-batch retries.
   - Atria ASI API rate limits handled via up to 5 automatic retries with backoff.
-  - Automatic fallback to local engine if external networks are unavailable.
-- **NFR-04: Explainability & Verifiability**: Every predicted judgment is accompanied by verbatim text of retrieved precedents, statutory citations, and an explicit judicial ratio decidendi.
-- **NFR-05: Strict Output Quality**: Built-in prompt engineering and post-processing strip internal scratchpad tokens and enforce word count constraints (Investigator $\le 500$, Defense $\le 300$, Prosecutor $\le 300$, Judge $\le 500$).
+  - Transparent labeling of local rule-based simulation engine when API is unavailable.
+- **NFR-04: Security & Compliance**:
+  - Zero hardcoded API keys in source code or documentation.
+  - Credentials managed strictly via `.env` and Streamlit secrets.
+  - Prominent legal decision-support disclaimer banner.
+- **NFR-05: Verifiability & Zero Fabricated Data**:
+  - All classification metrics computed via `scikit-learn`.
+  - Unconfigured evaluations labeled honestly as "Not Evaluated".
 
 ---
 
 ## 11. Empirical Evaluation & Quantitative Results
 
-Empirical validation was performed over isolated appellate test cases from `ground_truth.json`, stored in [processed_data/phase4_evaluation_metrics.json](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/processed_data/phase4_evaluation_metrics.json).
+Empirical validation was performed over isolated appellate test cases from `ground_truth.json` with post-decision tail text strictly stripped to prevent label leakage.
 
-### 11.1 Classification Metrics
+### 11.1 Supervised LJP Classification Baselines (318 Held-Out Test Cases)
 
-| Evaluation Metric | Score | Significance in Legal NLP |
-| :--- | :--- | :--- |
-| **Classification Accuracy** | **55.00%** | Multi-class prediction across 6 complex appellate legal outcomes (random chance is 16.67%). |
-| **Macro Precision** | **61.33%** | Balanced precision across all verdict classes regardless of class imbalance. |
-| **Macro Recall** | **61.33%** | Sensitivity in correctly identifying rare judicial rulings (e.g., *Appeal Allowed in Part*). |
-| **Macro F1-Score** | **61.33%** | Harmonic mean reflecting consistent classification robustness. |
+Recorded in [processed_data/supervised_benchmark_results.json](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/processed_data/supervised_benchmark_results.json):
 
-### 11.2 RAGAS (Retrieval Augmented Generation Assessment) Metrics
+| Model Architecture | Accuracy | Macro Precision | Macro Recall | Macro F1-Score | Weighted F1-Score | Brier Score Loss |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Majority Class Baseline** | 37.11% | 6.18% | 16.67% | 9.02% | 20.09% | N/A |
+| **TF-IDF + Calibrated Logistic Regression** | **51.89%** | **45.02%** | **37.67%** | **37.80%** | **48.23%** | **0.091** |
+| **Dense Embedding (MiniLM) + Calibrated Classifier** | 42.14% | 34.02% | 21.07% | 16.57% | 32.62% | 0.108 |
 
-| RAGAS Metric | Score | Explanation |
-| :--- | :--- | :--- |
-| **Faithfulness Score** | **74.95%** | Measures factual groundedness: percentage of claims in agent submissions directly supported by retrieved precedents and statutes. |
-| **Context Relevance Score** | **77.31%** | Measures signal-to-noise ratio: percentage of retrieved precedent and statutory chunks strictly relevant to the case dispute. |
+*Key Finding*: The TF-IDF + Calibrated Logistic Regression model outperforms the Majority baseline by **+14.78 percentage points** in accuracy. Macro F1 is impacted by the severe real-world class imbalance of `Appeal Allowed in Part` (which comprises only 1.5% of the total dataset).
+
+### 11.2 Controlled Research Hypothesis Testing (Systems A through E)
+
+Recorded in [processed_data/research_experiments_results.json](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/processed_data/research_experiments_results.json):
+
+| System Configuration | Architectural Components | Accuracy | Macro F1 | Weighted F1 | Latency |
+| :--- | :--- | :---: | :---: | :---: | :---: |
+| **System A** | Single-Agent Precedent-Only | 36.00% | 13.24% | 20.73% | 2.10s |
+| **System B** | Single-Agent Precedent + Statutory | 36.00% | 13.24% | 20.73% | 0.00s |
+| **System C** | SAC Chunking + Dual-Source RAG | 36.00% | 13.64% | 21.14% | 0.00s |
+| **System D** | SAC + Multi-Agent Adversarial Debate | 36.00% | 13.64% | 21.14% | 0.00s |
+| **System E** | SAC + Hybrid RRF + Trained Classifier | **51.89%** | **37.80%** | **48.23%** | 0.02s |
+
+### 11.3 RAGAS Groundedness Assessment Status
+
+- **Status**: **Not Evaluated**
+- **Explanation**: RAGAS faithfulness, context precision, and response relevancy metrics require an automated judge LLM with gold-standard human-annotated reference question-answer pairs. Rather than publishing simulated or hardcoded constants, SLLIP V3 reports this honestly as an unconfigured evaluation target.
 
 ---
 
-## 12. How to Run the Platform
+## 12. Managed Cloud Vector Database & Migration Engine
+
+SLLIP V3 introduces a vector store abstraction layer ([vector_store.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/vector_store.py)) and an idempotent migration engine ([migrate_vector_db.py](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/migrate_vector_db.py)) supporting:
+- **Local ChromaDB** (offline development default)
+- **Chroma Cloud** (managed hosted service)
+- **Qdrant Cloud** (high-throughput production cluster)
+
+### 12.1 Qdrant Cloud Setup & Configuration
+To connect the platform to a managed Qdrant Cloud cluster:
+1. Configure credentials in [`.env`](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/.env):
+   ```env
+   VECTOR_DB_BACKEND=qdrant
+   QDRANT_URL=https://<cluster-id>.<region>.gcp.cloud.qdrant.io:6333
+   QDRANT_API_KEY=<your-jwt-api-key>
+   ```
+2. Run the migration engine to transfer indexed case law and statutory vectors:
+   ```powershell
+   # Migrate Case Law Collection
+   python migrate_vector_db.py --collection case_law_collection --backend qdrant --batch-size 150
+
+   # Migrate Statutory Acts Collection
+   python migrate_vector_db.py --collection statutory_acts_collection --backend qdrant --batch-size 150
+   ```
+3. The engine uses deterministic RFC 4122 UUID5 mapping (`uuid.uuid5(uuid.NAMESPACE_DNS, chunk_id)`), guaranteeing 100% idempotent upserts without data duplication.
+
+---
+
+## 13. Automated Test Suite (pytest)
+
+The platform includes an automated unit and integration test suite in [tests/](file:///f:/New%20NIBM%20Reserch%202026/Sri_Lanka_Legal_Intelligence_Platform/tests):
+```powershell
+python -m pytest tests/ -v
+```
+All **14 tests pass with a 100% pass rate**:
+- `test_sac_chunks_within_token_limit`: Verifies that generated SAC chunks stay strictly within 240 tokens.
+- `test_metrics_computation_integrity`: Verifies scikit-learn metrics computation.
+- `test_ground_truth_counts_and_classes`: Verifies 1,980 total and 1,594 usable labeled cases.
+- `test_statutory_acts_bills_separation`: Verifies 2,587 Acts separated from 4,197 Bills.
+- `test_stratified_split_isolation`: Verifies zero data leakage between train, val, and test splits.
+- `test_bm25_index_and_query`: Verifies BM25 ranking accuracy.
+- `test_test_id_exclusion_prevents_leakage`: Verifies test cases cannot retrieve themselves.
+- `test_reciprocal_rank_fusion_logic`: Verifies RRF multi-modal rank combination.
+- `test_no_hardcoded_atria_key_in_code`: Verifies zero hardcoded API keys in source files.
+- `test_env_example_exists_and_has_placeholders`: Verifies `.env.example` template integrity.
+- `test_gitignore_contains_sensitive_files`: Verifies security exclusion of secrets and vector DBs.
+- `test_string_to_uuid_deterministic`: Verifies deterministic UUID5 mapping for Qdrant points.
+- `test_vector_store_factory_local_fallback`: Verifies local ChromaDB interface compliance.
+- `test_qdrant_cloud_connection_and_count`: Verifies live Qdrant Cloud cluster connectivity and query retrieval.
+
+---
+
+## 14. How to Run the Platform
 
 ### Step 1: Environment Setup
 Ensure Python 3.10+ is installed:
@@ -586,7 +682,7 @@ pip install -r requirements.txt
 ### Step 2: Environment Variables
 Create or verify `.env` in the project root:
 ```env
-ATRIA_API_KEY=atr_g5EXTQeJHPqjXM49A_apd_7UA2bGwT6h
+ATRIA_API_KEY=your_atria_api_key_here
 ATRIA_BASE_URL=https://api.atria-asi.ai/v1
 ATRIA_MODEL_ID=Atria-Dawn-Preview
 ```
